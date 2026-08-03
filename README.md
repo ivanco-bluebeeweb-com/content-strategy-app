@@ -1,4 +1,4 @@
-# Content Strategy App
+# Content Strategy Hub
 
 Decides what content to create next for managed sites — turns query-level
 signals (from Google Search Console, SEO Audit Engine, or manual input) into

@@ -39,7 +39,7 @@ from converters import (
 ext = Extension(
     "content-strategy-app",
     version="0.1.0",
-    display_name="Content Strategy",
+    display_name="Content Strategy Hub",
     description=(
         "Plans what to write next for your sites. Discovers content opportunities "
         "from Google Search Console data, clusters them into topics, generates "

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from schemas import ArticleBrief, Opportunity, QueueItem, SiteProfile
+from .schemas import ArticleBrief, Opportunity, QueueItem, SiteProfile
 
 _INTENT_COMMERCIAL_HINTS = (
     "buy", "price", "cost", "quote", "hire", "service", "company", "near me",

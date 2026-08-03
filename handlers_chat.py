@@ -9,8 +9,8 @@ Persistence: ctx.store, collections scoped by user automatically. Collections:
 """
 from imperal_sdk import ActionResult
 
-from main import chat
-from schemas import (
+from .app import chat
+from .schemas import (
     CreateBriefParams, CreateSiteProfileParams, DiscoverOpportunitiesParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams,
@@ -20,7 +20,7 @@ from schemas import (
     SiteProfile, SiteProfileList,
     TopicCluster,
 )
-from converters import (
+from .converters import (
     guess_intent, cluster_label, priority_score,
     to_opportunity as _to_opportunity,
     to_brief as _to_brief,

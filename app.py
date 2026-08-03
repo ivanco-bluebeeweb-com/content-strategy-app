@@ -1,0 +1,60 @@
+"""Content Strategy app — decides what content to create, why, for which
+site/audience, and hands off a structured brief downstream to article
+writing and the future Image/Media app.
+
+Boundaries (see notes "System architecture — Content Strategy app MVP"):
+- does NOT publish to WordPress (wp-site-connector's job)
+- does NOT generate/edit images (future Image/Media app's job)
+- does NOT own technical SEO crawling (SEO Audit Engine's job)
+
+This module owns the Extension/ChatExtension singletons. main.py is the
+deploy-required entry point and only re-exports these + triggers the
+side-effect imports that register handlers — keeping the actual objects
+in a distinctly-named module avoids any risk of main.py being imported
+twice under different module identities (once as the entry file, once as
+a plain import target) and ending up with two separate `ext` instances.
+"""
+from __future__ import annotations
+
+from imperal_sdk import Extension, ChatExtension
+
+ext = Extension(
+    "content-strategy-app",
+    version="0.1.0",
+    display_name="Content Strategy",
+    description=(
+        "Plans what to write next for your sites. Discovers content opportunities "
+        "from Google Search Console data, clusters them into topics, generates "
+        "structured article briefs (with image requirements for downstream "
+        "generation), and tracks each idea through an editorial queue from idea "
+        "to published."
+    ),
+    icon="icon.svg",
+    actions_explicit=True,
+    capabilities=["content_strategy:read", "content_strategy:write"],
+)
+
+
+@ext.health_check
+async def health_check(ctx) -> bool:
+    """Basic liveness check — confirms the store surface is reachable."""
+    await ctx.store.query("site_profiles", limit=1)
+    return True
+
+
+chat = ChatExtension(
+    ext,
+    tool_name="content-strategy-app",
+    description=(
+        "Content strategy assistant — discovers article opportunities from "
+        "search data, builds article briefs, and tracks editorial queue status "
+        "per site."
+    ),
+    system_prompt=(
+        "You help the user decide what content to create next for their sites. "
+        "You surface opportunities from search data, turn the best ones into "
+        "structured briefs, and track their status through an editorial queue. "
+        "You do not write full articles, generate images, or publish to "
+        "WordPress yourself — you hand off clean briefs for those next steps."
+    ),
+)

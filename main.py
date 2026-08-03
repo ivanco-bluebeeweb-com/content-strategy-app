@@ -4,8 +4,8 @@ side-effect imports that register @chat.function / @ext.panel handlers.
 """
 from __future__ import annotations
 
-from .app import ext, chat  # noqa: F401
+from app import ext, chat  # noqa: F401
 
 # Side-effect imports: register decorators
-from . import handlers_chat     # noqa: F401,E402
-from . import handlers_panel    # noqa: F401,E402
+import handlers_chat     # noqa: F401,E402
+import handlers_panel    # noqa: F401,E402

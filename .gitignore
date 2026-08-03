@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .venv/
 imperal.json
+.venv/
+tests/__pycache__/

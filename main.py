@@ -24,7 +24,15 @@ ext = Extension(
     ),
     icon="icon.svg",
     actions_explicit=True,
+    capabilities=["content_strategy:read", "content_strategy:write"],
 )
+
+
+@ext.health_check
+async def health_check(ctx) -> bool:
+    """Basic liveness check — confirms the store surface is reachable."""
+    await ctx.store.query("site_profiles", limit=1)
+    return True
 
 chat = ChatExtension(
     ext,
@@ -44,5 +52,5 @@ chat = ChatExtension(
 )
 
 # Side-effect imports: register decorators
-from . import handlers_chat     # noqa: F401,E402
-from . import handlers_panel    # noqa: F401,E402
+import handlers_chat     # noqa: F401,E402
+import handlers_panel    # noqa: F401,E402

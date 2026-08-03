@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from imperal_sdk import ui
 
-from .app import ext
+from main import ext
 
 _STATUS_COLOR = {
     "idea": "gray",

@@ -7,15 +7,10 @@ Persistence: ctx.store, collections scoped by user automatically. Collections:
 - article_briefs
 - queue_items
 """
-from __future__ import annotations
-
-import re
-from collections import defaultdict
-
 from imperal_sdk import ActionResult
 
-from .app import chat
-from .schemas import (
+from main import chat
+from schemas import (
     CreateBriefParams, CreateSiteProfileParams, DiscoverOpportunitiesParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams,
@@ -25,121 +20,13 @@ from .schemas import (
     SiteProfile, SiteProfileList,
     TopicCluster,
 )
-
-_INTENT_COMMERCIAL_HINTS = (
-    "buy", "price", "cost", "quote", "hire", "service", "company", "near me",
-    "купить", "цена", "стоимость", "заказать", "услуги", "компания",
+from converters import (
+    guess_intent, cluster_label, priority_score,
+    to_opportunity as _to_opportunity,
+    to_brief as _to_brief,
+    to_queue_item as _to_queue_item,
+    to_site_profile as _to_site_profile,
 )
-_INTENT_NAVIGATIONAL_HINTS = ("login", "sign in", "contact", "address", "hours")
-
-
-def _guess_intent(query: str) -> str:
-    q = query.lower()
-    if any(h in q for h in _INTENT_NAVIGATIONAL_HINTS):
-        return "navigational"
-    if any(h in q for h in _INTENT_COMMERCIAL_HINTS):
-        return "commercial"
-    return "informational"
-
-
-def _cluster_label(query: str) -> str:
-    """Cheap heuristic clustering: strip stopwords/numbers, take the first
-    two significant tokens as a cluster key. Good enough for MVP grouping;
-    not a replacement for a real NLP clustering pass."""
-    tokens = re.findall(r"[a-zA-Zа-яА-ЯёЁ]+", query.lower())
-    stop = {"the", "a", "an", "for", "and", "or", "in", "on", "of", "to",
-            "и", "в", "на", "для", "или", "с", "по"}
-    sig = [t for t in tokens if t not in stop and len(t) > 2]
-    return " ".join(sig[:2]) if sig else query.lower()[:24]
-
-
-def _priority_score(impressions: int, clicks: int, ctr: float, avg_position: float) -> float:
-    """Simple striking-distance-weighted score: reward high impressions with
-    low clicks (untapped demand) and positions in the 4-20 'almost ranking'
-    band, consistent with how the GSC connector's own striking_distance
-    tool frames opportunity."""
-    demand = min(impressions, 5000) / 5000.0  # 0..1
-    gap = 1.0 - min(ctr, 1.0)  # low ctr = more headroom
-    position_bonus = 1.0 if 4 <= avg_position <= 20 else (0.5 if avg_position < 4 else 0.2)
-    return round((demand * 0.4 + gap * 0.3 + position_bonus * 0.3) * 100, 1)
-
-
-def _to_opportunity(d) -> Opportunity:
-    data = d.data
-    return Opportunity(
-        id=d.id,
-        title=data.get("primary_query", ""),
-        site_id=data.get("site_id", ""),
-        source=data.get("source", ""),
-        primary_query=data.get("primary_query", ""),
-        supporting_queries=data.get("supporting_queries", []),
-        query_cluster_label=data.get("query_cluster_label", ""),
-        intent=data.get("intent", ""),
-        impressions=data.get("impressions", 0),
-        clicks=data.get("clicks", 0),
-        ctr=data.get("ctr", 0.0),
-        avg_position=data.get("avg_position", 0.0),
-        business_relevance_score=data.get("business_relevance_score", 0.0),
-        seo_opportunity_score=data.get("seo_opportunity_score", 0.0),
-        total_priority_score=data.get("total_priority_score", 0.0),
-        recommended_content_type=data.get("recommended_content_type", "article"),
-        recommended_target_url=data.get("recommended_target_url", ""),
-        status=data.get("status", "idea"),
-    )
-
-
-def _to_brief(d) -> ArticleBrief:
-    data = d.data
-    return ArticleBrief(
-        id=d.id,
-        title=data.get("working_title", ""),
-        body=data.get("differentiation_notes", ""),
-        site_id=data.get("site_id", ""),
-        opportunity_id=data.get("opportunity_id", ""),
-        working_title=data.get("working_title", ""),
-        target_language=data.get("target_language", ""),
-        target_audience=data.get("target_audience", ""),
-        search_intent=data.get("search_intent", ""),
-        primary_query=data.get("primary_query", ""),
-        secondary_queries=data.get("secondary_queries", []),
-        outline=data.get("outline", []),
-        cta_goal=data.get("cta_goal", ""),
-        internal_link_targets=data.get("internal_link_targets", []),
-        differentiation_notes=data.get("differentiation_notes", ""),
-        image_requirements=data.get("image_requirements", []),
-        status=data.get("status", "brief_ready"),
-    )
-
-
-def _to_queue_item(d) -> QueueItem:
-    data = d.data
-    return QueueItem(
-        id=d.id,
-        title=data.get("working_title") or data.get("primary_query") or d.id,
-        site_id=data.get("site_id", ""),
-        brief_id=data.get("brief_id", ""),
-        opportunity_id=data.get("opportunity_id", ""),
-        content_type=data.get("content_type", "article"),
-        lifecycle_status=data.get("lifecycle_status", "idea"),
-        assigned_agent=data.get("assigned_agent", "Webbee"),
-        published_url=data.get("published_url", ""),
-    )
-
-
-def _to_site_profile(d) -> SiteProfile:
-    data = d.data
-    return SiteProfile(
-        id=d.id,
-        title=data.get("brand_name") or data.get("domain", d.id),
-        site_id=data.get("site_id", ""),
-        domain=data.get("domain", ""),
-        brand_name=data.get("brand_name", ""),
-        business_description=data.get("business_description", ""),
-        target_languages=data.get("target_languages", []),
-        content_categories=data.get("content_categories", []),
-        cta_default=data.get("cta_default", ""),
-    )
-
 
 # ──────────────────────────────────────────────────────────────────────────
 # Site profiles
@@ -159,6 +46,7 @@ def _to_site_profile(d) -> SiteProfile:
     data_model=SiteProfile,
 )
 async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionResult:
+    """Register a new managed site profile (idempotent on site_id)."""
     existing = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
     if existing.data:
         return ActionResult.error(
@@ -191,6 +79,7 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
     data_model=SiteProfileList,
 )
 async def list_site_profiles(ctx, params: ListSiteProfilesParams) -> ActionResult:
+    """Return all registered site profiles."""
     page = await ctx.store.query("site_profiles", limit=params.limit)
     profiles = [_to_site_profile(d) for d in page.data]
     return ActionResult.success(
@@ -219,6 +108,8 @@ async def list_site_profiles(ctx, params: ListSiteProfilesParams) -> ActionResul
     data_model=OpportunityList,
 )
 async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> ActionResult:
+    """Score and cluster incoming query signals into new opportunities +
+    queue items for one site, skipping queries already tracked."""
     if not params.queries:
         return ActionResult.error(
             "No query signals provided. Fetch queries from the Google Search "
@@ -247,9 +138,9 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
     for sig in params.queries[: params.limit]:
         if sig.query.lower() in existing_queries:
             continue
-        intent = _guess_intent(sig.query)
-        cluster_label = _cluster_label(sig.query)
-        score = _priority_score(sig.impressions, sig.clicks, sig.ctr, sig.avg_position)
+        intent = guess_intent(sig.query)
+        label = cluster_label(sig.query)
+        score = priority_score(sig.impressions, sig.clicks, sig.ctr, sig.avg_position)
         doc = await ctx.store.create(
             "opportunities",
             {
@@ -257,7 +148,7 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
                 "source": sig.source,
                 "primary_query": sig.query,
                 "supporting_queries": [],
-                "query_cluster_label": cluster_label,
+                "query_cluster_label": label,
                 "intent": intent,
                 "impressions": sig.impressions,
                 "clicks": sig.clicks,
@@ -304,6 +195,7 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
     data_model=OpportunityList,
 )
 async def list_opportunities(ctx, params: ListOpportunitiesParams) -> ActionResult:
+    """Return opportunities, optionally filtered by site and/or status."""
     page = await ctx.store.query("opportunities", order_by="-created_at", limit=200)
     items = [d for d in page.data]
     if params.site_id:
@@ -337,6 +229,8 @@ async def list_opportunities(ctx, params: ListOpportunitiesParams) -> ActionResu
     data_model=ArticleBrief,
 )
 async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
+    """Build a structured article brief from an existing opportunity and
+    advance its linked queue item to brief_ready."""
     opp_doc = await ctx.store.get("opportunities", params.opportunity_id)
     if not opp_doc:
         return ActionResult.error(
@@ -404,6 +298,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
     data_model=ArticleBriefList,
 )
 async def list_briefs(ctx, params: ListBriefsParams) -> ActionResult:
+    """Return article briefs, optionally filtered by site."""
     page = await ctx.store.query("article_briefs", order_by="-created_at", limit=200)
     items = list(page.data)
     if params.site_id:
@@ -431,6 +326,8 @@ async def list_briefs(ctx, params: ListBriefsParams) -> ActionResult:
     data_model=QueueItemList,
 )
 async def list_queue(ctx, params: ListQueueParams) -> ActionResult:
+    """Return editorial queue items, optionally filtered by site and/or
+    lifecycle status."""
     page = await ctx.store.query("queue_items", order_by="-created_at", limit=500)
     items = list(page.data)
     if params.site_id:
@@ -460,6 +357,7 @@ async def list_queue(ctx, params: ListQueueParams) -> ActionResult:
     data_model=QueueItem,
 )
 async def update_queue_status(ctx, params: UpdateQueueStatusParams) -> ActionResult:
+    """Move one queue item to a new lifecycle status."""
     doc = await ctx.store.get("queue_items", params.queue_item_id)
     if not doc:
         return ActionResult.error(f"Queue item '{params.queue_item_id}' not found.", retryable=False)

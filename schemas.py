@@ -96,6 +96,7 @@ class QueueItem(sdl.Entity):
     site_id: str = ""
     brief_id: str = ""
     opportunity_id: str = ""
+    target_language: str = ""
     content_type: str = "article"
     lifecycle_status: str = "idea"
     assigned_agent: str = "Webbee"
@@ -150,6 +151,12 @@ class ListOpportunitiesParams(BaseModel):
 
 class CreateBriefParams(BaseModel):
     opportunity_id: str = Field(description="UUID of the opportunity to turn into a brief — from list_opportunities, never invented")
+    target_language: str = Field(
+        "", description="Language code for this brief (e.g. 'ru', 'ro'). Empty = use the site "
+                        "profile's first target language. Pass explicitly to create one brief "
+                        "per language for the same opportunity — a multilingual site is expected "
+                        "to get a separate brief per language, not one brief reused across languages."
+    )
 
 
 class ListBriefsParams(BaseModel):

@@ -416,7 +416,11 @@ async def list_opportunities(ctx, params: ListOpportunitiesParams) -> ActionResu
 )
 async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
     """Build a structured article brief from an existing opportunity and
-    advance its linked queue item to brief_ready."""
+    advance its linked queue item to brief_ready. Supports one brief per
+    language per opportunity — pass target_language explicitly to create
+    a second (third, ...) brief for the same opportunity in another language,
+    which also gets its own queue item so Editorial Queue tracks each
+    language's article separately."""
     opp_doc = await ctx.store.get("opportunities", params.opportunity_id)
     if not opp_doc:
         return ActionResult.error(
@@ -425,6 +429,19 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
     opp = opp_doc.data
     profile_page = await ctx.store.query("site_profiles", where={"site_id": opp.get("site_id", "")}, limit=1)
     profile = profile_page.data[0].data if profile_page.data else {}
+
+    target_language = params.target_language or (profile.get("target_languages") or ["en"])[0]
+
+    # one brief per (opportunity, language) — refuse a silent duplicate
+    existing_briefs = await ctx.store.query("article_briefs", limit=500)
+    for d in existing_briefs.data:
+        if (d.data.get("opportunity_id") == params.opportunity_id
+                and d.data.get("target_language") == target_language):
+            return ActionResult.error(
+                f"A brief already exists for this opportunity in '{target_language}' "
+                f"(brief {d.id}). Use a different target_language or that brief directly.",
+                retryable=False,
+            )
 
     outline = [
         f"H1: {opp.get('primary_query', '').capitalize()}",
@@ -444,7 +461,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "site_id": opp.get("site_id", ""),
             "opportunity_id": params.opportunity_id,
             "working_title": opp.get("primary_query", "").capitalize(),
-            "target_language": (profile.get("target_languages") or ["en"])[0],
+            "target_language": target_language,
             "target_audience": profile.get("business_description", ""),
             "search_intent": opp.get("intent", "informational"),
             "primary_query": opp.get("primary_query", ""),
@@ -460,19 +477,42 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
 
     await ctx.store.update("opportunities", params.opportunity_id, {"status": "brief_ready"})
 
-    # find and update the linked queue item
+    # find the queue item for this (opportunity, language); if this is the
+    # first brief for the opportunity there's already a language-less queue
+    # item from discover_opportunities — claim it. Otherwise (a second
+    # language for the same opportunity) create a fresh queue item so each
+    # language's article is tracked as its own row.
     q_page = await ctx.store.query("queue_items", limit=500)
+    claimed = False
     for d in q_page.data:
-        if d.data.get("opportunity_id") == params.opportunity_id:
+        if (d.data.get("opportunity_id") == params.opportunity_id
+                and not d.data.get("brief_id")
+                and d.data.get("target_language", "") in ("", target_language)):
             await ctx.store.update(
                 "queue_items", d.id,
-                {"lifecycle_status": "brief_ready", "brief_id": brief_doc.id},
+                {"lifecycle_status": "brief_ready", "brief_id": brief_doc.id, "target_language": target_language},
             )
+            claimed = True
             break
+    if not claimed:
+        await ctx.store.create(
+            "queue_items",
+            {
+                "site_id": opp.get("site_id", ""),
+                "brief_id": brief_doc.id,
+                "opportunity_id": params.opportunity_id,
+                "target_language": target_language,
+                "content_type": "article",
+                "lifecycle_status": "brief_ready",
+                "assigned_agent": "Webbee",
+                "published_url": "",
+                "primary_query": opp.get("primary_query", ""),
+            },
+        )
 
     return ActionResult.success(
         _to_brief(brief_doc),
-        summary=f"Brief created: {brief_doc.data['working_title']}",
+        summary=f"Brief created ({target_language}): {brief_doc.data['working_title']}",
         refresh_panels=["queue"],
     )
 

@@ -512,3 +512,33 @@ async def test_add_site_competitor_requires_existing_site_profile():
     ctx = MockContext()
     result = await m.add_site_competitor(ctx, AddSiteCompetitorParams(site_id="nope.md", name="X"))
     assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_create_brief_supports_one_brief_per_language():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="climtec.md", domain="climtec.md", target_languages=["ru", "ro"],
+    ))
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md",
+        queries=[QuerySignal(query="recuperator de caldura", impressions=10, clicks=1, ctr=0.1, avg_position=15.0)],
+    ))
+    opp_id = discovered.data.items[0].id
+
+    ru_brief = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ru"))
+    assert ru_brief.status == "success"
+    assert ru_brief.data.target_language == "ru"
+
+    ro_brief = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ro"))
+    assert ro_brief.status == "success"
+    assert ro_brief.data.target_language == "ro"
+    assert ro_brief.data.id != ru_brief.data.id
+
+    dup = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ru"))
+    assert dup.status == "error"
+
+    from schemas import ListQueueParams
+    queue = await m.list_queue(ctx, ListQueueParams(site_id="climtec.md"))
+    langs = sorted(item.target_language for item in queue.data.items if item.opportunity_id == opp_id)
+    assert langs == ["ro", "ru"]

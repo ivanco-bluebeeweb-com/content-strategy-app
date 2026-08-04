@@ -107,6 +107,7 @@ def to_queue_item(d) -> QueueItem:
         site_id=data.get("site_id", ""),
         brief_id=data.get("brief_id", ""),
         opportunity_id=data.get("opportunity_id", ""),
+        target_language=data.get("target_language", ""),
         content_type=data.get("content_type", "article"),
         lifecycle_status=data.get("lifecycle_status", "idea"),
         assigned_agent=data.get("assigned_agent", "Webbee"),

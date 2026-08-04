@@ -1304,6 +1304,12 @@
             "description": "UUID of the opportunity to turn into a brief — from list_opportunities, never invented",
             "title": "Opportunity Id",
             "type": "string"
+          },
+          "target_language": {
+            "default": "",
+            "description": "Language code for this brief (e.g. 'ru', 'ro'). Empty = use the site profile's first target language. Pass explicitly to create one brief per language for the same opportunity — a multilingual site is expected to get a separate brief per language, not one brief reused across languages.",
+            "title": "Target Language",
+            "type": "string"
           }
         },
         "required": [
@@ -2056,6 +2062,11 @@
             "title": "Opportunity Id",
             "type": "string"
           },
+          "target_language": {
+            "default": "",
+            "title": "Target Language",
+            "type": "string"
+          },
           "content_type": {
             "default": "article",
             "title": "Content Type",
@@ -2725,6 +2736,11 @@
                 "title": "Opportunity Id",
                 "type": "string"
               },
+              "target_language": {
+                "default": "",
+                "title": "Target Language",
+                "type": "string"
+              },
               "content_type": {
                 "default": "article",
                 "title": "Content Type",
@@ -2940,6 +2956,11 @@
           "opportunity_id": {
             "default": "",
             "title": "Opportunity Id",
+            "type": "string"
+          },
+          "target_language": {
+            "default": "",
+            "title": "Target Language",
             "type": "string"
           },
           "content_type": {

@@ -316,3 +316,55 @@ async def test_sources_panel_with_sites_still_offers_create_form():
     types = _walk(node, set())
     assert "Card" in types
     assert "Form" in types
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Quick Add — sites already connected in WordPress Hub (or any future
+# site-provider app registered in SITE_PROVIDER_APP_IDS) surface as one-click
+# "create a site profile for this site" buttons, via ctx.extensions.call IPC.
+# ──────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_fetch_connected_sites_calls_every_registered_provider():
+    ctx = MockContext()
+    ctx.extensions.register(
+        "wp-site-connector", "list_connected_sites",
+        lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md", "status": "connected"}],
+    )
+    sites = await m.fetch_connected_sites(ctx)
+    assert sites == [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md",
+                       "status": "connected", "provider": "wp-site-connector"}]
+
+
+@pytest.mark.asyncio
+async def test_fetch_connected_sites_skips_unreachable_provider_silently():
+    """A provider not installed/reachable must not crash Quick Add -- it's
+    just fewer candidates, never a broken panel."""
+    ctx = MockContext()  # no providers registered at all
+    sites = await m.fetch_connected_sites(ctx)
+    assert sites == []
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_shows_quick_add_for_unclaimed_connected_site():
+    ctx = MockContext()
+    ctx.extensions.register(
+        "wp-site-connector", "list_connected_sites",
+        lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md", "status": "connected"}],
+    )
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "Quick Add" in rendered
+    assert "G4S Moldova" in rendered
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_hides_quick_add_once_site_is_already_a_profile():
+    ctx = MockContext()
+    ctx.extensions.register(
+        "wp-site-connector", "list_connected_sites",
+        lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md", "status": "connected"}],
+    )
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    node = await m.sources_panel(ctx)
+    assert "Quick Add" not in repr(node)

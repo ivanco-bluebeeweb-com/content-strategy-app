@@ -68,6 +68,34 @@ async def health_check(ctx) -> bool:
     return True
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Cross-app site discovery for Quick Add -- not just WordPress, on purpose.
+# ──────────────────────────────────────────────────────────────────────────
+# Registry of app_ids that expose a "list_connected_sites" IPC method
+# returning [{"site_id", "name", "url", "status"}, ...]. Any future site
+# provider (Shopify, Webflow, a plain-domain connector, ...) is added here
+# and Quick Add picks it up automatically -- no panel code changes needed.
+SITE_PROVIDER_APP_IDS: list[str] = ["wp-site-connector"]
+
+
+async def fetch_connected_sites(ctx) -> list[dict]:
+    """Pull every connected site from every registered site-provider
+    extension via ctx.extensions.call -- direct in-process IPC (no chat
+    round-trip, no manual site_id typing). A provider that is not
+    installed/reachable is skipped silently, so Quick Add just shows
+    fewer candidates instead of surfacing an error the user can't act on.
+    """
+    sites: list[dict] = []
+    for app_id in SITE_PROVIDER_APP_IDS:
+        try:
+            rows = await ctx.extensions.call(app_id, "list_connected_sites")
+        except Exception:
+            continue
+        for r in rows or []:
+            sites.append({**r, "provider": app_id})
+    return sites
+
+
 chat = ChatExtension(
     ext,
     tool_name="content-strategy-app",
@@ -848,6 +876,36 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
     return ui.Stack(direction="v", gap=4, children=sections)
 
 
+def _quick_add_block(connected_sites: list[dict], existing_site_ids: set[str]) -> object | None:
+    """Quick Add: one real button per connected site not yet registered as a
+    site profile here, pre-filling create_site_profile's site_id/domain/
+    brand_name via ui.Call so a profile can be started in one click from
+    whatever is already connected in WordPress Hub (or any future site
+    provider in SITE_PROVIDER_APP_IDS) -- no retyping the domain, no chat."""
+    candidates = [s for s in connected_sites if s.get("site_id") not in existing_site_ids]
+    if not candidates:
+        return None
+    buttons = [
+        ui.Button(
+            s.get("name") or s["site_id"],
+            variant="secondary", size="sm", icon="Plus",
+            on_click=ui.Call(
+                "create_site_profile",
+                site_id=s["site_id"],
+                domain=s.get("url", "").replace("https://", "").replace("http://", "") or s["site_id"],
+                brand_name=s.get("name") or "",
+            ),
+        )
+        for s in candidates
+    ]
+    return ui.Card(
+        title="Quick Add — from connected sites",
+        content=ui.Stack(direction="v", gap=2, children=[
+            ui.Stack(direction="h", gap=1, wrap=True, children=buttons),
+        ]),
+    )
+
+
 @ext.panel(
     "sources",
     slot="right",
@@ -860,8 +918,13 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
 async def sources_panel(ctx, **kwargs) -> object:
     """List of managed site profiles. Always carries its own 'New site'
     ui.Form so the very first (and every subsequent) site profile can be
-    created directly from the panel -- no chat message required."""
+    created directly from the panel -- no chat message required. Also
+    offers Quick Add buttons for any site already connected elsewhere
+    (WordPress Hub today, more providers later via SITE_PROVIDER_APP_IDS)."""
     page = await ctx.store.query("site_profiles", limit=50)
+    existing_site_ids = {d.data.get("site_id") for d in page.data if d.data.get("site_id")}
+    connected_sites = await fetch_connected_sites(ctx)
+    quick_add = _quick_add_block(connected_sites, existing_site_ids)
 
     new_site_form = ui.Card(
         title="New site",
@@ -891,6 +954,7 @@ async def sources_panel(ctx, **kwargs) -> object:
                     message="No site profiles yet — create one below.",
                     icon="🌐",
                 ),
+                *([quick_add] if quick_add else []),
                 new_site_form,
             ],
         )
@@ -913,4 +977,7 @@ async def sources_panel(ctx, **kwargs) -> object:
             )
         )
 
-    return ui.Stack(direction="v", gap=3, children=cards + [new_site_form])
+    return ui.Stack(
+        direction="v", gap=3,
+        children=cards + ([quick_add] if quick_add else []) + [new_site_form],
+    )

@@ -398,8 +398,373 @@
       "owner_chat_tool": "content-strategy-app"
     },
     {
+      "name": "add_site_competitor",
+      "description": "Track a competitor for a managed site at the web/content level — which competing pages/sites rank or compete for the same topics, with observed strengths and weaknesses. Distinct from Brand Strategy Hub's brand-level competitors: this is about content/SERP rivals for THIS site specifically.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:site_competitor"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Competitor name",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "url": {
+            "default": "",
+            "description": "Competitor website",
+            "title": "Url",
+            "type": "string"
+          },
+          "competing_topics": {
+            "description": "Topics/queries where this competitor ranks or competes for the same content",
+            "items": {
+              "type": "string"
+            },
+            "title": "Competing Topics",
+            "type": "array"
+          },
+          "strengths": {
+            "description": "What the competitor does well",
+            "items": {
+              "type": "string"
+            },
+            "title": "Strengths",
+            "type": "array"
+          },
+          "weaknesses": {
+            "description": "Where the competitor falls short",
+            "items": {
+              "type": "string"
+            },
+            "title": "Weaknesses",
+            "type": "array"
+          },
+          "notes": {
+            "default": "",
+            "description": "Freeform observations",
+            "title": "Notes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id",
+          "name"
+        ],
+        "title": "AddSiteCompetitorParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One tracked competitor for a managed site — SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "default": "",
+            "title": "Url",
+            "type": "string"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "competing_topics": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Competing Topics",
+            "type": "array"
+          },
+          "strengths": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Strengths",
+            "type": "array"
+          },
+          "weaknesses": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Weaknesses",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "SiteCompetitorProfile",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "site_competitor_added",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "list_site_competitors",
+      "description": "List tracked web-level competitors, optionally filtered by site.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "default": "",
+            "description": "Optional site filter. Empty = all sites.",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Max items to return (1-100)",
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ListSiteCompetitorsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "SiteCompetitorProfile": {
+            "description": "One tracked competitor for a managed site — SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "default": "",
+                "title": "Url",
+                "type": "string"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "notes": {
+                "default": "",
+                "title": "Notes",
+                "type": "string"
+              },
+              "competing_topics": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Competing Topics",
+                "type": "array"
+              },
+              "strengths": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Strengths",
+                "type": "array"
+              },
+              "weaknesses": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Weaknesses",
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "SiteCompetitorProfile",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/SiteCompetitorProfile"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SiteCompetitorProfileList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
       "name": "discover_opportunities",
-      "description": "Turn query signals (fetch these first from the Google Search Console connector's top_queries or striking_distance tools, or from SEO Audit Engine findings) into scored content opportunities for a site, clustered by topic. Creates queue items in 'idea' status for each new opportunity.",
+      "description": "Turn query signals (fetch these first from the Google Search Console connector's top_queries or striking_distance tools, or from SEO Audit Engine findings) into scored content opportunities for a site, clustered by topic. Creates queue items in 'idea' status for each new opportunity. ASSISTANT POLICY (not enforced by this tool's params): before calling this, ask the user in chat how many articles/opportunities they want surfaced this round — never assume the 'limit' default silently. If the user's answer is ambiguous (e.g. mixed-language phrasing, unclear number, or could mean per-language rather than total — this platform is multilingual), ask a clarifying follow-up instead of guessing.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [

@@ -15,6 +15,7 @@ import main as m
 from schemas import (
     CreateSiteProfileParams, DiscoverOpportunitiesParams, QuerySignal,
     CreateBriefParams, UpdateQueueStatusParams, ListConnectedSitesParams,
+    AddSiteCompetitorParams, ListSiteCompetitorsParams,
 )
 
 
@@ -486,3 +487,28 @@ async def test_list_connected_sites_function_surfaces_provider_failure_in_summar
     assert result.status == "success"
     assert result.data.items == []
     assert "Could not read from" in result.summary
+
+
+@pytest.mark.asyncio
+async def test_add_site_competitor_and_list_by_site():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    result = await m.add_site_competitor(ctx, AddSiteCompetitorParams(
+        site_id="climtec.md", name="Ventclima", url="https://ventclima.md/",
+        competing_topics=["ventilare comerciala"], strengths=["turnkey install"],
+    ))
+    assert result.status == "success"
+    assert result.data.site_id == "climtec.md"
+    assert result.data.title == "Ventclima"
+
+    listed = await m.list_site_competitors(ctx, ListSiteCompetitorsParams(site_id="climtec.md"))
+    assert listed.status == "success"
+    assert len(listed.data.items) == 1
+    assert listed.data.items[0].title == "Ventclima"
+
+
+@pytest.mark.asyncio
+async def test_add_site_competitor_requires_existing_site_profile():
+    ctx = MockContext()
+    result = await m.add_site_competitor(ctx, AddSiteCompetitorParams(site_id="nope.md", name="X"))
+    assert result.status == "error"

@@ -283,3 +283,43 @@ class ConnectedSiteList(sdl.EntityList[ConnectedSite]):
 
 class ListConnectedSitesParams(BaseModel):
     limit: int = Field(50, description="Max items to return (1-100)")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Web-level competitor tracking (site-scoped — distinct from Brand Strategy
+# Hub's brand-scoped competitors; a site can rank against different SERP
+# competitors than the brand's business-level rivals).
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class SiteCompetitorProfile(sdl.Entity):
+    """One tracked competitor for a managed site — SERP/content rival,
+    not necessarily the same set as the brand's business-level competitors."""
+    site_id: str = ""
+    url: str = ""
+    notes: str = ""
+    competing_topics: list[str] = []
+    strengths: list[str] = []
+    weaknesses: list[str] = []
+
+
+class SiteCompetitorProfileList(sdl.EntityList[SiteCompetitorProfile]):
+    pass
+
+
+class AddSiteCompetitorParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    name: str = Field(min_length=1, description="Competitor name")
+    url: str = Field("", description="Competitor website")
+    competing_topics: list[str] = Field(
+        default_factory=list,
+        description="Topics/queries where this competitor ranks or competes for the same content",
+    )
+    strengths: list[str] = Field(default_factory=list, description="What the competitor does well")
+    weaknesses: list[str] = Field(default_factory=list, description="Where the competitor falls short")
+    notes: str = Field("", description="Freeform observations")
+
+
+class ListSiteCompetitorsParams(BaseModel):
+    site_id: str = Field("", description="Optional site filter. Empty = all sites.")
+    limit: int = Field(20, description="Max items to return (1-100)")

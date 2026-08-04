@@ -35,6 +35,8 @@ from schemas import (
     ConnectedSite, ConnectedSiteList, ListConnectedSitesParams,
     TopicCluster,
     WriterBrief,
+    SiteCompetitorProfile, SiteCompetitorProfileList,
+    AddSiteCompetitorParams, ListSiteCompetitorsParams,
 )
 from converters import (
     guess_intent, cluster_label, priority_score,
@@ -43,6 +45,7 @@ from converters import (
     to_calendar_entry as _to_calendar_entry,
     to_queue_item as _to_queue_item,
     to_site_profile as _to_site_profile,
+    to_site_competitor as _to_site_competitor,
 )
 
 ext = Extension(
@@ -203,6 +206,69 @@ async def list_site_profiles(ctx, params: ListSiteProfilesParams) -> ActionResul
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Web-level competitor tracking (site-scoped)
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "add_site_competitor",
+    description=(
+        "Track a competitor for a managed site at the web/content level — "
+        "which competing pages/sites rank or compete for the same topics, with "
+        "observed strengths and weaknesses. Distinct from Brand Strategy Hub's "
+        "brand-level competitors: this is about content/SERP rivals for THIS "
+        "site specifically."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:site_competitor"],
+    event="site_competitor_added",
+    data_model=SiteCompetitorProfile,
+)
+async def add_site_competitor(ctx, params: AddSiteCompetitorParams) -> ActionResult:
+    """Save one site-scoped competitor profile."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"No site profile '{params.site_id}'. Create it first with create_site_profile.",
+            retryable=False,
+        )
+    doc = await ctx.store.create(
+        "site_competitors",
+        {
+            "site_id": params.site_id,
+            "name": params.name,
+            "url": params.url,
+            "competing_topics": params.competing_topics,
+            "strengths": params.strengths,
+            "weaknesses": params.weaknesses,
+            "notes": params.notes,
+        },
+    )
+    return ActionResult.success(
+        _to_site_competitor(doc),
+        summary=f"Competitor '{params.name}' tracked for site '{params.site_id}'.",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
+    "list_site_competitors",
+    description="List tracked web-level competitors, optionally filtered by site.",
+    action_type="read",
+    data_model=SiteCompetitorProfileList,
+)
+async def list_site_competitors(ctx, params: ListSiteCompetitorsParams) -> ActionResult:
+    """Return tracked site-scoped competitors."""
+    where = {"site_id": params.site_id} if params.site_id else None
+    page = await ctx.store.query("site_competitors", where=where, limit=params.limit)
+    items = [_to_site_competitor(d) for d in page.data]
+    return ActionResult.success(
+        SiteCompetitorProfileList(items=items, total=len(items)),
+        summary=f"{len(items)} site competitor(s).",
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Opportunity discovery + clustering
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -213,7 +279,13 @@ async def list_site_profiles(ctx, params: ListSiteProfilesParams) -> ActionResul
         "Console connector's top_queries or striking_distance tools, or from "
         "SEO Audit Engine findings) into scored content opportunities for a "
         "site, clustered by topic. Creates queue items in 'idea' status for "
-        "each new opportunity."
+        "each new opportunity. "
+        "ASSISTANT POLICY (not enforced by this tool's params): before calling "
+        "this, ask the user in chat how many articles/opportunities they want "
+        "surfaced this round — never assume the 'limit' default silently. If "
+        "the user's answer is ambiguous (e.g. mixed-language phrasing, unclear "
+        "number, or could mean per-language rather than total — this platform "
+        "is multilingual), ask a clarifying follow-up instead of guessing."
     ),
     action_type="write",
     chain_callable=True,

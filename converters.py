@@ -144,3 +144,18 @@ def to_site_profile(d) -> SiteProfile:
         content_categories=data.get("content_categories", []),
         cta_default=data.get("cta_default", ""),
     )
+
+
+def to_site_competitor(d) -> "SiteCompetitorProfile":
+    from schemas import SiteCompetitorProfile
+    data = d.data
+    return SiteCompetitorProfile(
+        id=d.id,
+        title=data.get("name", d.id),
+        site_id=data.get("site_id", ""),
+        url=data.get("url", ""),
+        notes=data.get("notes", ""),
+        competing_topics=data.get("competing_topics", []),
+        strengths=data.get("strengths", []),
+        weaknesses=data.get("weaknesses", []),
+    )

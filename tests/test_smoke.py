@@ -374,9 +374,24 @@ async def test_fetch_connected_sites_reports_unreachable_provider_instead_of_hid
 
 
 @pytest.mark.asyncio
-async def test_sources_panel_shows_quick_add_for_unclaimed_connected_site():
+async def test_sources_panel_shows_not_loaded_yet_before_first_refresh():
+    """Panel RENDER never calls the flaky IPC path directly -- before the
+    cache is warmed by a real list_connected_sites call, the card says so
+    honestly instead of erroring or vanishing."""
     ctx = MockContext()
     _wp_provider(ctx)
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "Quick Add" in rendered
+    assert "Not loaded yet" in rendered
+    assert "Refresh" in rendered
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_shows_quick_add_for_unclaimed_connected_site_after_cache_warm():
+    ctx = MockContext()
+    _wp_provider(ctx)
+    await m.list_connected_sites(ctx, ListConnectedSitesParams())  # warms the cache
     node = await m.sources_panel(ctx)
     rendered = repr(node)
     assert "Quick Add" in rendered
@@ -389,6 +404,7 @@ async def test_sources_panel_quick_add_card_visible_even_when_provider_unreachab
     """The whole point of the fix: no provider reachable still shows the card,
     naming the provider and the reason, plus a Refresh button."""
     ctx = MockContext()  # no providers registered
+    await m.list_connected_sites(ctx, ListConnectedSitesParams())  # warms the cache with the failure
     node = await m.sources_panel(ctx)
     rendered = repr(node)
     assert "Quick Add" in rendered
@@ -401,6 +417,7 @@ async def test_sources_panel_quick_add_card_visible_even_when_provider_unreachab
 async def test_sources_panel_quick_add_card_stays_visible_when_all_sites_tracked():
     ctx = MockContext()
     _wp_provider(ctx)
+    await m.list_connected_sites(ctx, ListConnectedSitesParams())  # warms the cache
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
     node = await m.sources_panel(ctx)
     rendered = repr(node)
@@ -415,6 +432,7 @@ async def test_quick_add_prefills_domain_stripped_of_scheme():
     """The button must hand create_site_profile a clean domain, not a URL."""
     ctx = MockContext()
     _wp_provider(ctx)
+    await m.list_connected_sites(ctx, ListConnectedSitesParams())  # warms the cache
     node = await m.sources_panel(ctx)
     rendered = repr(node)
     assert "'domain': 'g4s.md'" in rendered

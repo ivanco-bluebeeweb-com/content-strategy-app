@@ -338,9 +338,28 @@ async def test_fetch_connected_sites_calls_every_registered_provider():
     ctx = MockContext()
     _wp_provider(ctx)
     sites, problems = await m.fetch_connected_sites(ctx)
-    assert sites == [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md",
-                      "status": "connected", "provider": "wp-site-connector"}]
     assert problems == []
+    assert len(sites) == 1
+    assert sites[0]["site_id"] == "g4s.md"
+    assert sites[0]["name"] == "G4S Moldova"
+    assert sites[0]["provider"] == "wp-site-connector"
+
+
+@pytest.mark.asyncio
+async def test_provider_slug_site_id_is_normalised_to_the_bare_domain():
+    """WordPress Hub keys sites by slug ('g4s-md') while these hubs key them
+    by domain ('g4s.md'). Quick Add must offer the DOMAIN form, otherwise a
+    click would create a duplicate profile beside the existing one."""
+    ctx = MockContext()
+    ctx.extensions.register(
+        "wp-site-connector", "list_connected_sites",
+        lambda **kw: [{"site_id": "g4s-md", "name": "G4S Moldova",
+                       "url": "https://www.g4s.md/", "status": "connected"}],
+    )
+    sites, problems = await m.fetch_connected_sites(ctx)
+    assert problems == []
+    assert sites[0]["site_id"] == "g4s.md"          # normalised, www stripped
+    assert sites[0]["provider_site_id"] == "g4s-md"  # original kept for traceability
 
 
 @pytest.mark.asyncio

@@ -79,6 +79,20 @@ async def health_check(ctx) -> bool:
 SITE_PROVIDER_APP_IDS: list[str] = ["wp-site-connector"]
 
 
+def _canonical_site_id(row: dict) -> str:
+    """Normalise a provider's site identifier to its bare domain.
+
+    Providers name sites their own way -- WordPress Hub uses a slug
+    ('g4s-md') while this app keys sites by domain ('g4s.md'). Quick Add must
+    speak the domain form, otherwise clicking it would create a DUPLICATE
+    profile next to the existing one and 'already added' checks would miss.
+    """
+    host = (row.get("url") or "").strip().split("://", 1)[-1].split("/", 1)[0].lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host or (row.get("site_id") or "")
+
+
 async def fetch_connected_sites(ctx) -> tuple[list[dict], list[dict]]:
     """Pull every connected site from every registered site-provider
     extension via ctx.extensions.call -- direct in-process IPC (no chat
@@ -101,7 +115,12 @@ async def fetch_connected_sites(ctx) -> tuple[list[dict], list[dict]]:
             })
             continue
         for r in rows or []:
-            sites.append({**r, "provider": app_id})
+            sites.append({
+                **r,
+                "provider": app_id,
+                "provider_site_id": r.get("site_id", ""),
+                "site_id": _canonical_site_id(r),
+            })
     return sites, problems
 
 

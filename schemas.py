@@ -100,6 +100,9 @@ class QueueItem(sdl.Entity):
     lifecycle_status: str = "idea"
     assigned_agent: str = "Webbee"
     published_url: str = ""
+    scheduled_date: str = ""  # YYYY-MM-DD — set by build_content_calendar
+    external_project_id: str = ""  # Article Writer project id, once linked
+    external_article_id: str = ""  # Article Writer article id, once linked
 
 
 class QueueItemList(sdl.EntityList[QueueItem]):
@@ -178,3 +181,82 @@ class CreateSiteProfileParams(BaseModel):
 
 class ListSiteProfilesParams(BaseModel):
     limit: int = Field(20, description="Max items to return (1-100)")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Monthly content calendar — publication grid
+# ──────────────────────────────────────────────────────────────────────────
+
+class ContentCalendarEntry(sdl.Entity):
+    """One scheduled slot on the monthly publication grid."""
+    site_id: str = ""
+    queue_item_id: str = ""
+    scheduled_date: str = ""  # YYYY-MM-DD
+    working_title: str = ""
+    lifecycle_status: str = "idea"
+    content_type: str = "article"
+
+
+class ContentCalendarEntryList(sdl.EntityList[ContentCalendarEntry]):
+    pass
+
+
+class BuildContentCalendarParams(BaseModel):
+    site_id: str = Field(description="Site to build the monthly calendar for, e.g. 'g4s.md'")
+    year: int = Field(description="Calendar year, e.g. 2026")
+    month: int = Field(ge=1, le=12, description="Calendar month, 1-12")
+    posts_per_week: int = Field(2, ge=1, le=14, description="How many publication slots per week to fill")
+    weekdays: list[int] = Field(
+        default_factory=lambda: [1, 4],
+        description="Preferred ISO weekdays for publishing (1=Monday..7=Sunday); cycled to fill posts_per_week",
+    )
+    queue_item_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Explicit queue items (from list_queue, status brief_ready or later) to place "
+            "on the grid, in priority order. If empty, the highest-priority unscheduled "
+            "items for this site are picked automatically."
+        ),
+    )
+
+
+class GetContentCalendarParams(BaseModel):
+    site_id: str = Field("", description="Optional site filter. Empty = all sites.")
+    year: int = Field(0, description="Optional calendar year filter; 0 = all")
+    month: int = Field(0, ge=0, le=12, description="Optional calendar month filter (1-12); 0 = all")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Article Writer pipeline linkage — pass-through handoff, no direct IPC
+# ──────────────────────────────────────────────────────────────────────────
+
+class LinkExternalArticleParams(BaseModel):
+    queue_item_id: str = Field(description="UUID of the queue item to link — from list_queue, never invented")
+    external_project_id: str = Field("", description="Article Writer project id (imperal-article-writer-extension), once created")
+    external_article_id: str = Field("", description="Article Writer article id, once created via that app's create_article")
+
+
+class BuildWriterBriefParams(BaseModel):
+    brief_id: str = Field(description="UUID of an existing article brief — from list_briefs, never invented")
+
+
+class WriterBrief(sdl.Entity, sdl.Bodied):
+    """Everything Article Writer needs to create_project/create_article/generate_article
+    for this brief, assembled in the exact shape that app's tools expect. There is no
+    direct extension-to-extension call here (no cross-extension IPC exists on this
+    platform) — Webbee reads this entity's fields and passes them into Article Writer's
+    own tools in the next chat turn. The `body` (from sdl.Bodied) is the full brief as
+    Markdown, ready to paste as Article Writer's brief/keyword input."""
+    site_id: str = ""
+    queue_item_id: str = ""
+    brief_id: str = ""
+    suggested_project_name: str = ""  # -> imperal-article-writer-extension.create_project(name=...)
+    site_url: str = ""  # -> create_project(site_url=...)
+    target_keyword: str = ""  # -> create_article(keyword=...) / generate_article
+    working_title: str = ""  # -> create_article(title=...)
+    target_audience: str = ""
+    secondary_queries: list[str] = []
+    outline: list[str] = []
+    cta_goal: str = ""
+    internal_link_targets: list[str] = []
+    differentiation_notes: str = ""

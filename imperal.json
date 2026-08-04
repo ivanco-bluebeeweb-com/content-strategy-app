@@ -1149,6 +1149,825 @@
       "owner_chat_tool": "content-strategy-app"
     },
     {
+      "name": "build_content_calendar",
+      "description": "Build a monthly content calendar for a site: assigns scheduled_date slots (on the given weekdays, posts_per_week per week) across the given month to queue items, filling the publication grid. Picks the highest-priority unscheduled brief_ready+ items automatically if queue_item_ids is empty.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "update:queue_item"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site to build the monthly calendar for, e.g. 'g4s.md'",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "year": {
+            "description": "Calendar year, e.g. 2026",
+            "title": "Year",
+            "type": "integer"
+          },
+          "month": {
+            "description": "Calendar month, 1-12",
+            "maximum": 12,
+            "minimum": 1,
+            "title": "Month",
+            "type": "integer"
+          },
+          "posts_per_week": {
+            "default": 2,
+            "description": "How many publication slots per week to fill",
+            "maximum": 14,
+            "minimum": 1,
+            "title": "Posts Per Week",
+            "type": "integer"
+          },
+          "weekdays": {
+            "description": "Preferred ISO weekdays for publishing (1=Monday..7=Sunday); cycled to fill posts_per_week",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Weekdays",
+            "type": "array"
+          },
+          "queue_item_ids": {
+            "description": "Explicit queue items (from list_queue, status brief_ready or later) to place on the grid, in priority order. If empty, the highest-priority unscheduled items for this site are picked automatically.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Queue Item Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "site_id",
+          "year",
+          "month"
+        ],
+        "title": "BuildContentCalendarParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "ContentCalendarEntry": {
+            "description": "One scheduled slot on the monthly publication grid.",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "queue_item_id": {
+                "default": "",
+                "title": "Queue Item Id",
+                "type": "string"
+              },
+              "scheduled_date": {
+                "default": "",
+                "title": "Scheduled Date",
+                "type": "string"
+              },
+              "working_title": {
+                "default": "",
+                "title": "Working Title",
+                "type": "string"
+              },
+              "lifecycle_status": {
+                "default": "idea",
+                "title": "Lifecycle Status",
+                "type": "string"
+              },
+              "content_type": {
+                "default": "article",
+                "title": "Content Type",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "ContentCalendarEntry",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/ContentCalendarEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ContentCalendarEntryList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "scheduled",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "get_content_calendar",
+      "description": "Read the publication grid: queue items that already have a scheduled_date, optionally filtered by site/year/month. Use this to see what is due to publish and when.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "default": "",
+            "description": "Optional site filter. Empty = all sites.",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "year": {
+            "default": 0,
+            "description": "Optional calendar year filter; 0 = all",
+            "title": "Year",
+            "type": "integer"
+          },
+          "month": {
+            "default": 0,
+            "description": "Optional calendar month filter (1-12); 0 = all",
+            "maximum": 12,
+            "minimum": 0,
+            "title": "Month",
+            "type": "integer"
+          }
+        },
+        "title": "GetContentCalendarParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "ContentCalendarEntry": {
+            "description": "One scheduled slot on the monthly publication grid.",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "queue_item_id": {
+                "default": "",
+                "title": "Queue Item Id",
+                "type": "string"
+              },
+              "scheduled_date": {
+                "default": "",
+                "title": "Scheduled Date",
+                "type": "string"
+              },
+              "working_title": {
+                "default": "",
+                "title": "Working Title",
+                "type": "string"
+              },
+              "lifecycle_status": {
+                "default": "idea",
+                "title": "Lifecycle Status",
+                "type": "string"
+              },
+              "content_type": {
+                "default": "article",
+                "title": "Content Type",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "ContentCalendarEntry",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/ContentCalendarEntry"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ContentCalendarEntryList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "link_external_article",
+      "description": "Record the Article Writer (imperal-article-writer-extension) project_id/article_id once you have created them there for this queue item, so this app's queue keeps a two-way reference between the brief and the actual article being written.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "update:queue_item"
+      ],
+      "id_projection": "queue_item_id",
+      "params_schema": {
+        "properties": {
+          "queue_item_id": {
+            "description": "UUID of the queue item to link — from list_queue, never invented",
+            "title": "Queue Item Id",
+            "type": "string"
+          },
+          "external_project_id": {
+            "default": "",
+            "description": "Article Writer project id (imperal-article-writer-extension), once created",
+            "title": "External Project Id",
+            "type": "string"
+          },
+          "external_article_id": {
+            "default": "",
+            "description": "Article Writer article id, once created via that app's create_article",
+            "title": "External Article Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "queue_item_id"
+        ],
+        "title": "LinkExternalArticleParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Editorial workflow state — one row per opportunity/brief in flight.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "brief_id": {
+            "default": "",
+            "title": "Brief Id",
+            "type": "string"
+          },
+          "opportunity_id": {
+            "default": "",
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "content_type": {
+            "default": "article",
+            "title": "Content Type",
+            "type": "string"
+          },
+          "lifecycle_status": {
+            "default": "idea",
+            "title": "Lifecycle Status",
+            "type": "string"
+          },
+          "assigned_agent": {
+            "default": "Webbee",
+            "title": "Assigned Agent",
+            "type": "string"
+          },
+          "published_url": {
+            "default": "",
+            "title": "Published Url",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "default": "",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "external_project_id": {
+            "default": "",
+            "title": "External Project Id",
+            "type": "string"
+          },
+          "external_article_id": {
+            "default": "",
+            "title": "External Article Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "QueueItem",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "linked",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "build_writer_brief",
+      "description": "Assemble an existing article brief into the exact shape Article Writer (imperal-article-writer-extension) needs for create_project/create_article/generate_article — title, keyword, outline, audience, CTA. Pass the returned fields straight into that app's tools; there is no direct extension-to-extension call, so Webbee relays this data in the same chat turn.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "brief_id": {
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
+            "title": "Brief Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brief_id"
+        ],
+        "title": "BuildWriterBriefParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Everything Article Writer needs to create_project/create_article/generate_article\nfor this brief, assembled in the exact shape that app's tools expect. There is no\ndirect extension-to-extension call here (no cross-extension IPC exists on this\nplatform) — Webbee reads this entity's fields and passes them into Article Writer's\nown tools in the next chat turn. The `body` (from sdl.Bodied) is the full brief as\nMarkdown, ready to paste as Article Writer's brief/keyword input.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body",
+            "x-sdl-role": "content.body"
+          },
+          "body_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "md",
+                  "html",
+                  "plain",
+                  "rich"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body Format",
+            "x-sdl-role": "content.body_format"
+          },
+          "raw_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Body",
+            "x-sdl-role": "content.raw_body"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "queue_item_id": {
+            "default": "",
+            "title": "Queue Item Id",
+            "type": "string"
+          },
+          "brief_id": {
+            "default": "",
+            "title": "Brief Id",
+            "type": "string"
+          },
+          "suggested_project_name": {
+            "default": "",
+            "title": "Suggested Project Name",
+            "type": "string"
+          },
+          "site_url": {
+            "default": "",
+            "title": "Site Url",
+            "type": "string"
+          },
+          "target_keyword": {
+            "default": "",
+            "title": "Target Keyword",
+            "type": "string"
+          },
+          "working_title": {
+            "default": "",
+            "title": "Working Title",
+            "type": "string"
+          },
+          "target_audience": {
+            "default": "",
+            "title": "Target Audience",
+            "type": "string"
+          },
+          "secondary_queries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Secondary Queries",
+            "type": "array"
+          },
+          "outline": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Outline",
+            "type": "array"
+          },
+          "cta_goal": {
+            "default": "",
+            "title": "Cta Goal",
+            "type": "string"
+          },
+          "internal_link_targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Internal Link Targets",
+            "type": "array"
+          },
+          "differentiation_notes": {
+            "default": "",
+            "title": "Differentiation Notes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "WriterBrief",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
       "name": "list_briefs",
       "description": "List article briefs, optionally filtered by site.",
       "action_type": "read",
@@ -1560,6 +2379,21 @@
                 "default": "",
                 "title": "Published Url",
                 "type": "string"
+              },
+              "scheduled_date": {
+                "default": "",
+                "title": "Scheduled Date",
+                "type": "string"
+              },
+              "external_project_id": {
+                "default": "",
+                "title": "External Project Id",
+                "type": "string"
+              },
+              "external_article_id": {
+                "default": "",
+                "title": "External Article Id",
+                "type": "string"
               }
             },
             "required": [
@@ -1761,6 +2595,21 @@
           "published_url": {
             "default": "",
             "title": "Published Url",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "default": "",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "external_project_id": {
+            "default": "",
+            "title": "External Project Id",
+            "type": "string"
+          },
+          "external_article_id": {
+            "default": "",
+            "title": "External Article Id",
             "type": "string"
           }
         },

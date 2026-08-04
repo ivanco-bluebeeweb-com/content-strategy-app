@@ -142,3 +142,136 @@ async def test_update_queue_status_happy_and_missing():
         ctx, UpdateQueueStatusParams(queue_item_id="nonexistent", lifecycle_status="approved")
     )
     assert missing.status == "error"
+
+
+async def _site_with_brief_ready_queue_item(ctx, query="security services chisinau"):
+    """Shared setup: profile -> opportunity -> brief -> queue item at brief_ready."""
+    await m.create_site_profile(
+        ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md", brand_name="G4S")
+    )
+    disc = await m.discover_opportunities(
+        ctx,
+        DiscoverOpportunitiesParams(
+            site_id="g4s.md",
+            queries=[
+                QuerySignal(query=query, source="gsc",
+                            impressions=500, clicks=10, ctr=0.02, avg_position=8.5),
+            ],
+        ),
+    )
+    top_opp = disc.data.items[0]
+    brief_result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=top_opp.id))
+    from schemas import ListQueueParams
+    queue_result = await m.list_queue(ctx, ListQueueParams(site_id="g4s.md"))
+    queue_item_id = queue_result.data.items[0].id
+    return queue_item_id, brief_result.data.id
+
+
+@pytest.mark.asyncio
+async def test_build_content_calendar_schedules_unscheduled_items():
+    from schemas import BuildContentCalendarParams
+    ctx = MockContext()
+    await _site_with_brief_ready_queue_item(ctx)
+
+    result = await m.build_content_calendar(
+        ctx,
+        BuildContentCalendarParams(
+            site_id="g4s.md", year=2026, month=9, posts_per_week=2, weekdays=[1, 4]
+        ),
+    )
+    assert result.status == "success"
+    assert len(result.data.items) == 1
+    assert result.data.items[0].scheduled_date.startswith("2026-09-")
+
+
+@pytest.mark.asyncio
+async def test_build_content_calendar_no_matching_weekdays_errors():
+    from schemas import BuildContentCalendarParams
+    ctx = MockContext()
+    await _site_with_brief_ready_queue_item(ctx)
+
+    result = await m.build_content_calendar(
+        ctx,
+        BuildContentCalendarParams(
+            site_id="g4s.md", year=2026, month=9, posts_per_week=1, weekdays=[]
+        ),
+    )
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_get_content_calendar_filters_by_site_year_month():
+    from schemas import BuildContentCalendarParams, GetContentCalendarParams
+    ctx = MockContext()
+    await _site_with_brief_ready_queue_item(ctx)
+    await m.build_content_calendar(
+        ctx,
+        BuildContentCalendarParams(
+            site_id="g4s.md", year=2026, month=9, posts_per_week=2, weekdays=[1, 4]
+        ),
+    )
+
+    result = await m.get_content_calendar(
+        ctx, GetContentCalendarParams(site_id="g4s.md", year=2026, month=9)
+    )
+    assert result.status == "success"
+    assert len(result.data.items) == 1
+
+    empty = await m.get_content_calendar(
+        ctx, GetContentCalendarParams(site_id="g4s.md", year=2026, month=10)
+    )
+    assert len(empty.data.items) == 0
+
+
+@pytest.mark.asyncio
+async def test_link_external_article_stores_ids_and_requires_a_field():
+    from schemas import LinkExternalArticleParams
+    ctx = MockContext()
+    queue_item_id, _brief_id = await _site_with_brief_ready_queue_item(ctx)
+
+    result = await m.link_external_article(
+        ctx,
+        LinkExternalArticleParams(
+            queue_item_id=queue_item_id,
+            external_project_id="proj-1",
+            external_article_id="art-1",
+        ),
+    )
+    assert result.status == "success"
+    assert result.data.external_project_id == "proj-1"
+    assert result.data.external_article_id == "art-1"
+
+    empty = await m.link_external_article(
+        ctx, LinkExternalArticleParams(queue_item_id=queue_item_id)
+    )
+    assert empty.status == "error"
+
+    missing = await m.link_external_article(
+        ctx, LinkExternalArticleParams(queue_item_id="nonexistent", external_project_id="x")
+    )
+    assert missing.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_build_writer_brief_assembles_article_writer_payload():
+    from schemas import BuildWriterBriefParams
+    ctx = MockContext()
+    _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+
+    result = await m.build_writer_brief(ctx, BuildWriterBriefParams(brief_id=brief_id))
+    assert result.status == "success"
+    payload = result.data
+    assert payload.brief_id == brief_id
+    assert payload.suggested_project_name == "G4S"
+    assert payload.site_url == "g4s.md"
+    assert payload.target_keyword == "security services chisinau"
+    assert payload.body  # Markdown body assembled from the brief
+    assert payload.queue_item_id  # linked back to the originating queue item
+
+
+@pytest.mark.asyncio
+async def test_build_writer_brief_missing_brief_errors():
+    from schemas import BuildWriterBriefParams
+    ctx = MockContext()
+    result = await m.build_writer_brief(ctx, BuildWriterBriefParams(brief_id="nonexistent"))
+    assert result.status == "error"

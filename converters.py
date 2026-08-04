@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from schemas import ArticleBrief, Opportunity, QueueItem, SiteProfile
+from schemas import ArticleBrief, ContentCalendarEntry, Opportunity, QueueItem, SiteProfile
 
 _INTENT_COMMERCIAL_HINTS = (
     "buy", "price", "cost", "quote", "hire", "service", "company", "near me",
@@ -111,6 +111,23 @@ def to_queue_item(d) -> QueueItem:
         lifecycle_status=data.get("lifecycle_status", "idea"),
         assigned_agent=data.get("assigned_agent", "Webbee"),
         published_url=data.get("published_url", ""),
+        scheduled_date=data.get("scheduled_date", ""),
+        external_project_id=data.get("external_project_id", ""),
+        external_article_id=data.get("external_article_id", ""),
+    )
+
+
+def to_calendar_entry(d) -> ContentCalendarEntry:
+    data = d.data
+    return ContentCalendarEntry(
+        id=d.id,
+        title=data.get("working_title") or data.get("primary_query") or d.id,
+        site_id=data.get("site_id", ""),
+        queue_item_id=d.id,
+        scheduled_date=data.get("scheduled_date", ""),
+        working_title=data.get("working_title") or data.get("primary_query") or "",
+        lifecycle_status=data.get("lifecycle_status", "idea"),
+        content_type=data.get("content_type", "article"),
     )
 
 

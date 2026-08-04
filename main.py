@@ -16,22 +16,30 @@ back out of main.py ends up talking to a second, empty copy of this module).
 """
 from __future__ import annotations
 
+import calendar as _calendar
+from datetime import date as _date
+
 from imperal_sdk import ActionResult, Extension, ChatExtension, ui
 
 from schemas import (
-    CreateBriefParams, CreateSiteProfileParams, DiscoverOpportunitiesParams,
+    BuildContentCalendarParams, BuildWriterBriefParams, CreateBriefParams,
+    CreateSiteProfileParams, DiscoverOpportunitiesParams,
+    GetContentCalendarParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams,
     ArticleBrief, ArticleBriefList,
+    ContentCalendarEntry, ContentCalendarEntryList,
     Opportunity, OpportunityList,
     QueueItem, QueueItemList,
     SiteProfile, SiteProfileList,
     TopicCluster,
+    WriterBrief,
 )
 from converters import (
     guess_intent, cluster_label, priority_score,
     to_opportunity as _to_opportunity,
     to_brief as _to_brief,
+    to_calendar_entry as _to_calendar_entry,
     to_queue_item as _to_queue_item,
     to_site_profile as _to_site_profile,
 )
@@ -339,6 +347,225 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         summary=f"Brief created: {brief_doc.data['working_title']}",
         refresh_panels=["queue"],
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Monthly content calendar — publication grid
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "build_content_calendar",
+    description=(
+        "Build a monthly content calendar for a site: assigns scheduled_date "
+        "slots (on the given weekdays, posts_per_week per week) across the "
+        "given month to queue items, filling the publication grid. Picks the "
+        "highest-priority unscheduled brief_ready+ items automatically if "
+        "queue_item_ids is empty."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["update:queue_item"],
+    event="scheduled",
+    data_model=ContentCalendarEntryList,
+)
+async def build_content_calendar(ctx, params: BuildContentCalendarParams) -> ActionResult:
+    """Assign scheduled_date slots across a calendar month to queue items."""
+    days_in_month = _calendar.monthrange(params.year, params.month)[1]
+    slot_dates = [
+        _date(params.year, params.month, d)
+        for d in range(1, days_in_month + 1)
+        if _date(params.year, params.month, d).isoweekday() in params.weekdays
+    ]
+    if not slot_dates:
+        return ActionResult.error(
+            "No publication slots match the given weekdays for that month.", retryable=False)
+
+    if params.queue_item_ids:
+        docs = []
+        for qid in params.queue_item_ids:
+            doc = await ctx.store.get("queue_items", qid)
+            if doc:
+                docs.append(doc)
+    else:
+        page = await ctx.store.query("queue_items", where={"site_id": params.site_id}, limit=500)
+        candidates = [
+            d for d in page.data
+            if d.data.get("lifecycle_status") in ("brief_ready", "draft_requested", "draft_ready", "approved")
+            and not d.data.get("scheduled_date")
+        ]
+
+        # priority order: pull each candidate's linked opportunity score, default 0
+        async def _score(d):
+            opp_id = d.data.get("opportunity_id", "")
+            if not opp_id:
+                return 0.0
+            opp_doc = await ctx.store.get("opportunities", opp_id)
+            return opp_doc.data.get("total_priority_score", 0.0) if opp_doc else 0.0
+
+        scored = [(await _score(d), d) for d in candidates]
+        scored.sort(key=lambda t: t[0], reverse=True)
+        docs = [d for _, d in scored]
+
+    slots_needed = params.posts_per_week * (len(slot_dates) // 7 + (1 if len(slot_dates) % 7 else 0))
+    # simplest fair distribution: walk slot_dates in order, cycling once posts_per_week per week is reached
+    scheduled = []
+    week_counts: dict[int, int] = {}
+    slot_idx = 0
+    for doc in docs:
+        placed = False
+        while slot_idx < len(slot_dates):
+            d = slot_dates[slot_idx]
+            week_no = d.isocalendar()[1]
+            if week_counts.get(week_no, 0) < params.posts_per_week:
+                week_counts[week_no] = week_counts.get(week_no, 0) + 1
+                await ctx.store.update("queue_items", doc.id, {"scheduled_date": d.isoformat()})
+                doc.data["scheduled_date"] = d.isoformat()
+                scheduled.append(_to_calendar_entry(doc))
+                slot_idx += 1
+                placed = True
+                break
+            slot_idx += 1
+        if not placed:
+            break  # ran out of slots for this month
+
+    return ActionResult.success(
+        ContentCalendarEntryList(items=scheduled, total=len(scheduled)),
+        summary=f"Scheduled {len(scheduled)} item(s) across {params.year}-{params.month:02d}.",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
+    "get_content_calendar",
+    description=(
+        "Read the publication grid: queue items that already have a "
+        "scheduled_date, optionally filtered by site/year/month. Use this "
+        "to see what is due to publish and when."
+    ),
+    action_type="read",
+    data_model=ContentCalendarEntryList,
+)
+async def get_content_calendar(ctx, params: GetContentCalendarParams) -> ActionResult:
+    """List queue items that have a scheduled_date, as calendar entries."""
+    page = await ctx.store.query("queue_items", order_by="-created_at", limit=500)
+    items = [d for d in page.data if d.data.get("scheduled_date")]
+    if params.site_id:
+        items = [d for d in items if d.data.get("site_id") == params.site_id]
+    if params.year:
+        prefix = f"{params.year:04d}-"
+        items = [d for d in items if d.data.get("scheduled_date", "").startswith(prefix)]
+    if params.month:
+        tag = f"-{params.month:02d}-"
+        items = [d for d in items if tag in d.data.get("scheduled_date", "")]
+    items.sort(key=lambda d: d.data.get("scheduled_date", ""))
+    entries = [_to_calendar_entry(d) for d in items]
+    return ActionResult.success(
+        ContentCalendarEntryList(items=entries, total=len(entries)),
+        summary=f"{len(entries)} scheduled item(s).",
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Article Writer pipeline linkage — pass-through handoff, no direct IPC
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "link_external_article",
+    description=(
+        "Record the Article Writer (imperal-article-writer-extension) "
+        "project_id/article_id once you have created them there for this "
+        "queue item, so this app's queue keeps a two-way reference between "
+        "the brief and the actual article being written."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["update:queue_item"],
+    event="linked",
+    id_projection="queue_item_id",
+    data_model=QueueItem,
+)
+async def link_external_article(ctx, params: LinkExternalArticleParams) -> ActionResult:
+    """Store Article Writer's project_id/article_id against a queue item."""
+    doc = await ctx.store.get("queue_items", params.queue_item_id)
+    if not doc:
+        return ActionResult.error(f"Queue item '{params.queue_item_id}' not found.", retryable=False)
+    update = {}
+    if params.external_project_id:
+        update["external_project_id"] = params.external_project_id
+    if params.external_article_id:
+        update["external_article_id"] = params.external_article_id
+    if not update:
+        return ActionResult.error("Provide external_project_id and/or external_article_id.", retryable=False)
+    await ctx.store.update("queue_items", params.queue_item_id, update)
+    doc.data.update(update)
+    return ActionResult.success(
+        _to_queue_item(doc),
+        summary="Linked to Article Writer.",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
+    "build_writer_brief",
+    description=(
+        "Assemble an existing article brief into the exact shape Article "
+        "Writer (imperal-article-writer-extension) needs for "
+        "create_project/create_article/generate_article — title, keyword, "
+        "outline, audience, CTA. Pass the returned fields straight into "
+        "that app's tools; there is no direct extension-to-extension call, "
+        "so Webbee relays this data in the same chat turn."
+    ),
+    action_type="read",
+    data_model=WriterBrief,
+)
+async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResult:
+    """Read one article brief and reshape it for Article Writer's tool inputs."""
+    brief_doc = await ctx.store.get("article_briefs", params.brief_id)
+    if not brief_doc:
+        return ActionResult.error(f"Brief '{params.brief_id}' not found.", retryable=False)
+    brief = brief_doc.data
+
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": brief.get("site_id", "")}, limit=1)
+    profile = profile_page.data[0].data if profile_page.data else {}
+
+    q_page = await ctx.store.query("queue_items", limit=500)
+    queue_item_id = ""
+    for d in q_page.data:
+        if d.data.get("brief_id") == params.brief_id:
+            queue_item_id = d.id
+            break
+
+    body_lines = [
+        f"# {brief.get('working_title', '')}",
+        "",
+        f"Target audience: {brief.get('target_audience', '')}",
+        f"Search intent: {brief.get('search_intent', '')}",
+        "",
+        "## Outline",
+    ] + [f"- {line}" for line in brief.get("outline", [])] + [
+        "",
+        f"CTA goal: {brief.get('cta_goal', '')}",
+    ]
+
+    payload = WriterBrief(
+        id=brief_doc.id,
+        title=brief.get("working_title", ""),
+        body="\n".join(body_lines),
+        site_id=brief.get("site_id", ""),
+        queue_item_id=queue_item_id,
+        brief_id=params.brief_id,
+        suggested_project_name=profile.get("brand_name") or brief.get("site_id", ""),
+        site_url=profile.get("domain", ""),
+        target_keyword=brief.get("primary_query", ""),
+        working_title=brief.get("working_title", ""),
+        target_audience=brief.get("target_audience", ""),
+        secondary_queries=brief.get("secondary_queries", []),
+        outline=brief.get("outline", []),
+        cta_goal=brief.get("cta_goal", ""),
+        internal_link_targets=brief.get("internal_link_targets", []),
+        differentiation_notes=brief.get("differentiation_notes", ""),
+    )
+    return ActionResult.success(payload, summary=f"Writer brief assembled for '{payload.working_title}'.")
 
 
 @chat.function(

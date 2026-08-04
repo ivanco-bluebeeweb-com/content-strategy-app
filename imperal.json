@@ -2626,6 +2626,160 @@
       "long_running": false,
       "scopes": [],
       "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "list_connected_sites",
+      "description": "List the sites already connected in other apps (WordPress Hub today, any future site provider) that Quick Add offers as one-click site profile candidates, flagging which ones are already registered here. Also the diagnostic for an empty Quick Add list: it reports whether a provider could not be reached and why.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "limit": {
+            "default": 50,
+            "description": "Max items to return (1-100)",
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ListConnectedSitesParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "ConnectedSite": {
+            "description": "One site read from a site-provider extension (WordPress Hub today,\nmore providers later) — the raw material behind the Quick Add list.",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "default": "",
+                "title": "Status",
+                "type": "string"
+              },
+              "url": {
+                "default": "",
+                "title": "Url",
+                "type": "string"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "provider": {
+                "default": "",
+                "title": "Provider",
+                "type": "string"
+              },
+              "already_tracked": {
+                "default": false,
+                "title": "Already Tracked",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "ConnectedSite",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/ConnectedSite"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConnectedSiteList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
     }
   ],
   "signals": [],

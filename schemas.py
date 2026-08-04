@@ -260,3 +260,26 @@ class WriterBrief(sdl.Entity, sdl.Bodied):
     cta_goal: str = ""
     internal_link_targets: list[str] = []
     differentiation_notes: str = ""
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Cross-app site discovery (Quick Add source)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class ConnectedSite(sdl.Entity):
+    """One site read from a site-provider extension (WordPress Hub today,
+    more providers later) — the raw material behind the Quick Add list."""
+    site_id: str = ""
+    url: str = ""
+    status: str = ""
+    provider: str = ""
+    already_tracked: bool = False
+
+
+class ConnectedSiteList(sdl.EntityList[ConnectedSite]):
+    pass
+
+
+class ListConnectedSitesParams(BaseModel):
+    limit: int = Field(50, description="Max items to return (1-100)")

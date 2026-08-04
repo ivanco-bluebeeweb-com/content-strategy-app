@@ -14,7 +14,7 @@ from imperal_sdk.testing import MockContext
 import main as m
 from schemas import (
     CreateSiteProfileParams, DiscoverOpportunitiesParams, QuerySignal,
-    CreateBriefParams, UpdateQueueStatusParams,
+    CreateBriefParams, UpdateQueueStatusParams, ListConnectedSitesParams,
 )
 
 
@@ -321,50 +321,103 @@ async def test_sources_panel_with_sites_still_offers_create_form():
 # ──────────────────────────────────────────────────────────────────────────
 # Quick Add — sites already connected in WordPress Hub (or any future
 # site-provider app registered in SITE_PROVIDER_APP_IDS) surface as one-click
-# "create a site profile for this site" buttons, via ctx.extensions.call IPC.
+# "create a site profile" buttons, via ctx.extensions.call IPC.
+# The card must ALWAYS render: a silently missing card is unfixable from the UI.
 # ──────────────────────────────────────────────────────────────────────────
+
+def _wp_provider(ctx):
+    ctx.extensions.register(
+        "wp-site-connector", "list_connected_sites",
+        lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova",
+                       "url": "https://g4s.md", "status": "connected"}],
+    )
+
 
 @pytest.mark.asyncio
 async def test_fetch_connected_sites_calls_every_registered_provider():
     ctx = MockContext()
-    ctx.extensions.register(
-        "wp-site-connector", "list_connected_sites",
-        lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md", "status": "connected"}],
-    )
-    sites = await m.fetch_connected_sites(ctx)
+    _wp_provider(ctx)
+    sites, problems = await m.fetch_connected_sites(ctx)
     assert sites == [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md",
-                       "status": "connected", "provider": "wp-site-connector"}]
+                      "status": "connected", "provider": "wp-site-connector"}]
+    assert problems == []
 
 
 @pytest.mark.asyncio
-async def test_fetch_connected_sites_skips_unreachable_provider_silently():
-    """A provider not installed/reachable must not crash Quick Add -- it's
-    just fewer candidates, never a broken panel."""
+async def test_fetch_connected_sites_reports_unreachable_provider_instead_of_hiding_it():
+    """A provider that cannot be reached must be REPORTED, not swallowed."""
     ctx = MockContext()  # no providers registered at all
-    sites = await m.fetch_connected_sites(ctx)
+    sites, problems = await m.fetch_connected_sites(ctx)
     assert sites == []
+    assert len(problems) == 1
+    assert problems[0]["provider"] == "wp-site-connector"
+    assert problems[0]["reason"]
 
 
 @pytest.mark.asyncio
 async def test_sources_panel_shows_quick_add_for_unclaimed_connected_site():
     ctx = MockContext()
-    ctx.extensions.register(
-        "wp-site-connector", "list_connected_sites",
-        lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md", "status": "connected"}],
-    )
+    _wp_provider(ctx)
     node = await m.sources_panel(ctx)
     rendered = repr(node)
     assert "Quick Add" in rendered
     assert "G4S Moldova" in rendered
+    assert "create_site_profile" in rendered
 
 
 @pytest.mark.asyncio
-async def test_sources_panel_hides_quick_add_once_site_is_already_a_profile():
+async def test_sources_panel_quick_add_card_visible_even_when_provider_unreachable():
+    """The whole point of the fix: no provider reachable still shows the card,
+    naming the provider and the reason, plus a Refresh button."""
+    ctx = MockContext()  # no providers registered
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "Quick Add" in rendered
+    assert "Could not read connected sites from" in rendered
+    assert "wp-site-connector" in rendered
+    assert "Refresh" in rendered
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_quick_add_card_stays_visible_when_all_sites_tracked():
     ctx = MockContext()
-    ctx.extensions.register(
-        "wp-site-connector", "list_connected_sites",
-        lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova", "url": "https://g4s.md", "status": "connected"}],
-    )
+    _wp_provider(ctx)
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
     node = await m.sources_panel(ctx)
-    assert "Quick Add" not in repr(node)
+    rendered = repr(node)
+    assert "Quick Add" in rendered
+    assert "already has a site profile" in rendered
+    quick_add_section = rendered.split("Quick Add")[1].split("New site")[0]
+    assert "create_site_profile" not in quick_add_section
+
+
+@pytest.mark.asyncio
+async def test_quick_add_prefills_domain_stripped_of_scheme():
+    """The button must hand create_site_profile a clean domain, not a URL."""
+    ctx = MockContext()
+    _wp_provider(ctx)
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "'domain': 'g4s.md'" in rendered
+    assert "https://g4s.md'" not in rendered.split("Quick Add")[1].split("New site")[0]
+
+
+@pytest.mark.asyncio
+async def test_list_connected_sites_function_reports_tracked_flag():
+    ctx = MockContext()
+    _wp_provider(ctx)
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    result = await m.list_connected_sites(ctx, ListConnectedSitesParams())
+    assert result.status == "success"
+    assert len(result.data.items) == 1
+    assert result.data.items[0].already_tracked is True
+    assert result.data.items[0].provider == "wp-site-connector"
+
+
+@pytest.mark.asyncio
+async def test_list_connected_sites_function_surfaces_provider_failure_in_summary():
+    ctx = MockContext()  # no providers registered
+    result = await m.list_connected_sites(ctx, ListConnectedSitesParams())
+    assert result.status == "success"
+    assert result.data.items == []
+    assert "Could not read from" in result.summary

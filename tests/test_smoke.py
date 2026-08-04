@@ -275,3 +275,44 @@ async def test_build_writer_brief_missing_brief_errors():
     ctx = MockContext()
     result = await m.build_writer_brief(ctx, BuildWriterBriefParams(brief_id="nonexistent"))
     assert result.status == "error"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Panel rendering — sources_panel must offer a real create_site_profile
+# ui.Form directly in the panel, both empty and populated. Requirement:
+# "a UI I control that reaches every detail without talking in chat" --
+# a panel that tells the user to go type in chat instead is the anti-pattern.
+# ──────────────────────────────────────────────────────────────────────────
+
+def _walk(node, seen_types):
+    node_type = getattr(node, "type", None)
+    if node_type is not None:
+        seen_types.add(node_type)
+        props = getattr(node, "props", {}) or {}
+        for value in props.values():
+            if isinstance(value, list):
+                for item in value:
+                    _walk(item, seen_types)
+            else:
+                _walk(value, seen_types)
+    return seen_types
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_empty_state_has_create_form():
+    ctx = MockContext()
+    node = await m.sources_panel(ctx)
+    types = _walk(node, set())
+    assert "Form" in types
+    assert "Input" in types
+    assert "Empty" in types
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_with_sites_still_offers_create_form():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    node = await m.sources_panel(ctx)
+    types = _walk(node, set())
+    assert "Card" in types
+    assert "Form" in types

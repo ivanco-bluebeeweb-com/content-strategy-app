@@ -858,11 +858,41 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
     max_width=420,
 )
 async def sources_panel(ctx, **kwargs) -> object:
+    """List of managed site profiles. Always carries its own 'New site'
+    ui.Form so the very first (and every subsequent) site profile can be
+    created directly from the panel -- no chat message required."""
     page = await ctx.store.query("site_profiles", limit=50)
+
+    new_site_form = ui.Card(
+        title="New site",
+        content=ui.Form(
+            action="create_site_profile",
+            submit_label="Create site profile",
+            children=[
+                ui.Input(param_name="site_id", placeholder="Site id, e.g. g4s.md"),
+                ui.Input(param_name="domain", placeholder="Domain, e.g. g4s.md"),
+                ui.Input(param_name="brand_name", placeholder="Brand name (optional)"),
+                ui.TextArea(param_name="business_description",
+                            placeholder="What the business does (optional)", rows=2),
+                ui.TagInput(param_name="target_languages",
+                            placeholder="Add a language code and press Enter, e.g. ru"),
+                ui.TagInput(param_name="content_categories",
+                            placeholder="Add a content category and press Enter"),
+                ui.Input(param_name="cta_default", placeholder="Default CTA (optional)"),
+            ],
+        ),
+    )
+
     if not page.data:
-        return ui.Empty(
-            message="No site profiles yet — ask Webbee to create one (create_site_profile) for g4s.md or climtec.md.",
-            icon="🌐",
+        return ui.Stack(
+            direction="v", gap=3,
+            children=[
+                ui.Empty(
+                    message="No site profiles yet — create one below.",
+                    icon="🌐",
+                ),
+                new_site_form,
+            ],
         )
 
     cards = []
@@ -883,4 +913,4 @@ async def sources_panel(ctx, **kwargs) -> object:
             )
         )
 
-    return ui.Stack(direction="v", gap=3, children=cards)
+    return ui.Stack(direction="v", gap=3, children=cards + [new_site_form])

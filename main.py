@@ -854,11 +854,22 @@ async def queue_panel(ctx, site_id: str = "", **kwargs) -> object:
         on_change=ui.Call("__panel__queue"),
     )
 
+    # Explicit button to open the Sites panel (right slot). The right slot's
+    # own auto-population at session init is not guaranteed the way the left
+    # slot's is, so Quick Add there could otherwise be reachable only by luck
+    # of panel-discovery timing. This button makes it reachable with one
+    # deliberate click, every time, from a panel that IS always on screen.
+    sites_button = ui.Button(
+        "🌐 Sites — manage & Quick Add", variant="secondary", size="sm", full_width=True,
+        on_click=ui.Call("__panel__sources"),
+    )
+
     if not docs:
         body = ui.Stack(
             direction="v",
             gap=3,
             children=[
+                sites_button,
                 filter_row,
                 ui.Empty(
                     message="No queue items yet — discover opportunities from chat to get started.",
@@ -886,6 +897,7 @@ async def queue_panel(ctx, site_id: str = "", **kwargs) -> object:
         direction="v",
         gap=3,
         children=[
+            sites_button,
             filter_row,
             ui.List(items=items, searchable=True),
         ],

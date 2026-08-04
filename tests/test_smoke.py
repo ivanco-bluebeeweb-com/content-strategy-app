@@ -19,6 +19,34 @@ from schemas import (
 
 
 @pytest.mark.asyncio
+async def test_queue_panel_empty_state_has_sites_button():
+    """The right-slot Sites panel (where Quick Add lives) is not guaranteed
+    to auto-open at session start the way the left slot is. Editorial Queue
+    (left slot, always on screen) must carry an explicit button to reach it
+    -- otherwise Quick Add could be reachable only by luck of panel timing,
+    which is exactly what the user hit."""
+    ctx = MockContext()
+    node = await m.queue_panel(ctx)
+    rendered = repr(node)
+    assert "Sites" in rendered
+    assert "__panel__sources" in rendered
+
+
+@pytest.mark.asyncio
+async def test_queue_panel_with_items_still_has_sites_button():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        signals=[QuerySignal(query="security services chisinau", clicks=10, impressions=200, position=8.0)],
+    ))
+    node = await m.queue_panel(ctx)
+    rendered = repr(node)
+    assert "Sites" in rendered
+    assert "__panel__sources" in rendered
+
+
+@pytest.mark.asyncio
 async def test_create_site_profile_happy_path():
     ctx = MockContext()
     result = await m.create_site_profile(

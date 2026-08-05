@@ -330,3 +330,76 @@ class AddSiteCompetitorParams(BaseModel):
 class ListSiteCompetitorsParams(BaseModel):
     site_id: str = Field("", description="Optional site filter. Empty = all sites.")
     limit: int = Field(20, description="Max items to return (1-100)")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Mandatory pre-strategy content audit + keyword cannibalization
+#
+# The content pipeline must never plan new articles blind to what already
+# exists: discover_opportunities is gated on a recent audit existing for the
+# site (see main.py), and the audit surfaces cannibalization explicitly so
+# it is visible in the panel, not just implied by "everything looks fine".
+# ──────────────────────────────────────────────────────────────────────────
+
+
+class ExistingContentItem(sdl.Entity):
+    """One already-published post pulled live from the site for the audit."""
+    site_id: str = ""
+    slug: str = ""
+    link: str = ""
+    word_count: int = 0
+    is_thin: bool = False  # < 300 words — too short to compete for its topic
+    categories: list[int] = []
+    lang: str = ""
+    top_terms: list[str] = []  # cheap keyword signature used for cannibalization matching
+
+
+class ExistingContentItemList(sdl.EntityList[ExistingContentItem]):
+    pass
+
+
+class CannibalizationFinding(sdl.Entity):
+    """Two or more existing articles competing for the same topic/keywords —
+    they will split ranking signal instead of reinforcing one page."""
+    site_id: str = ""
+    shared_terms: list[str] = []
+    overlap_score: float = 0.0  # 0..1, share of significant terms in common
+    urls: list[str] = []
+    titles: list[str] = []
+    recommendation: str = ""  # merge | differentiate | canonicalize
+
+
+class CannibalizationFindingList(sdl.EntityList[CannibalizationFinding]):
+    pass
+
+
+class ContentAuditReport(sdl.Entity):
+    """Result of a deep audit of a site's EXISTING content — mandatory
+    before any new content strategy work for that site. Fields deliberately
+    make gaps visible rather than only reporting what's fine."""
+    site_id: str = ""
+    total_posts: int = 0
+    posts_by_language: dict[str, int] = Field(default_factory=dict)
+    thin_content_count: int = 0
+    thin_content_urls: list[str] = Field(default_factory=list)
+    missing_excerpt_count: int = 0
+    cannibalization_pairs_found: int = 0
+    covered_topics: list[str] = Field(default_factory=list)
+    needs_doing: list[str] = Field(default_factory=list)  # explicit action items, always shown
+    audited_at: str = ""
+
+
+class RunContentAuditParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+
+
+class GetContentAuditParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+
+
+class CheckCannibalizationParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    candidate_keyword: str = Field(
+        "", description="Optional: a NEW topic/keyword being considered for a fresh article — "
+                        "checked against existing content so a duplicate topic is caught BEFORE writing, "
+                        "not after. Empty = audit existing articles against each other only.")

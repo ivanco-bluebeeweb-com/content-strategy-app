@@ -37,6 +37,8 @@ from schemas import (
     WriterBrief,
     SiteCompetitorProfile, SiteCompetitorProfileList,
     AddSiteCompetitorParams, ListSiteCompetitorsParams,
+    ContentAuditReport, RunContentAuditParams, GetContentAuditParams,
+    CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
 )
 from converters import (
     guess_intent, cluster_label, priority_score,
@@ -46,7 +48,12 @@ from converters import (
     to_queue_item as _to_queue_item,
     to_site_profile as _to_site_profile,
     to_site_competitor as _to_site_competitor,
+    word_count as _word_count,
+    top_terms as _top_terms,
+    term_overlap_score as _term_overlap_score,
+    find_cannibalization_pairs as _find_cannibalization_pairs,
 )
+import time as _time
 
 ext = Extension(
     "content-strategy-app",
@@ -269,6 +276,189 @@ async def list_site_competitors(ctx, params: ListSiteCompetitorsParams) -> Actio
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Mandatory pre-strategy content audit + keyword cannibalization
+#
+# discover_opportunities REFUSES to run for a site until run_content_audit
+# has been run for it at least once (see the gate inside discover_opportunities
+# below) -- new topics must never be picked blind to what already exists.
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "run_content_audit",
+    description=(
+        "Deep audit of a site's EXISTING content -- MANDATORY before any new "
+        "content strategy work for that site (discover_opportunities refuses "
+        "to run without one). Pulls every live post from WordPress Hub (via "
+        "inter-extension IPC, not chat), measures word count (flags thin "
+        "content under 300 words), checks for a missing excerpt, extracts a "
+        "cheap keyword signature per article, and cross-checks every pair for "
+        "keyword cannibalization -- two+ articles competing for the same topic "
+        "and splitting ranking signal instead of reinforcing one page. Always "
+        "produces an explicit 'needs_doing' list, even when nothing is wrong, "
+        "so the audit result is visible and actionable in the panel, never a "
+        "silent pass."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:content_audit"],
+    event="content_audit_completed",
+    data_model=ContentAuditReport,
+)
+async def run_content_audit(ctx, params: RunContentAuditParams) -> ActionResult:
+    """Fetch every existing post for a site via WP Site Connector IPC,
+    score it, cross-check for cannibalization, and persist the report."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"Site profile '{params.site_id}' not found. Create it first with create_site_profile.",
+            retryable=False,
+        )
+
+    try:
+        raw_posts = await ctx.extensions.call(
+            "wp-site-connector", "list_posts_full", site_id=params.site_id, limit=500,
+        )
+    except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
+        return ActionResult.error(
+            f"Could not read existing posts from WordPress Hub for '{params.site_id}': "
+            f"{type(exc).__name__}: {exc}. Make sure the site is connected there first.",
+            retryable=True,
+        )
+
+    items = []
+    posts_by_lang: dict[str, int] = {}
+    thin_urls = []
+    missing_excerpt = 0
+    covered = set()
+    for p in raw_posts or []:
+        wc = _word_count(p.get("content", ""))
+        terms = _top_terms((p.get("title", "") + " " + p.get("content", "")))
+        lang = p.get("lang") or "unknown"
+        posts_by_lang[lang] = posts_by_lang.get(lang, 0) + 1
+        is_thin = wc < 300
+        if is_thin:
+            thin_urls.append(p.get("link", p.get("slug", "")))
+        if not (p.get("excerpt") or "").strip():
+            missing_excerpt += 1
+        covered.update(terms[:3])
+        items.append({
+            "id": p.get("id"), "title": p.get("title", ""), "link": p.get("link", ""),
+            "slug": p.get("slug", ""), "word_count": wc, "is_thin": is_thin,
+            "lang": lang, "top_terms": terms,
+        })
+
+    pairs = _find_cannibalization_pairs(items)
+    for pair in pairs:
+        await ctx.store.create("cannibalization_findings", {"site_id": params.site_id, **pair})
+
+    needs_doing: list[str] = []
+    if thin_urls:
+        needs_doing.append(f"{len(thin_urls)} thin article(s) under 300 words need expanding: "
+                           + ", ".join(thin_urls[:5]) + (" ..." if len(thin_urls) > 5 else ""))
+    if missing_excerpt:
+        needs_doing.append(f"{missing_excerpt} article(s) have no excerpt set")
+    if pairs:
+        needs_doing.append(f"{len(pairs)} keyword-cannibalization pair(s) found -- "
+                           "merge, differentiate, or canonicalize before adding a new article on the same topic")
+    if not items:
+        needs_doing.append("No existing posts found -- confirm the site is connected and has published content "
+                           "before treating this as a clean slate")
+    if not needs_doing:
+        needs_doing.append("No gaps found in this pass -- safe to proceed to discover_opportunities")
+
+    audited_at = ctx.time.now().isoformat() if hasattr(ctx, "time") and hasattr(ctx.time, "now") else ""
+
+    existing_audit = await ctx.store.query("content_audits", where={"site_id": params.site_id}, limit=1)
+    payload = {
+        "site_id": params.site_id, "total_posts": len(items), "posts_by_language": posts_by_lang,
+        "thin_content_count": len(thin_urls), "thin_content_urls": thin_urls,
+        "missing_excerpt_count": missing_excerpt, "cannibalization_pairs_found": len(pairs),
+        "covered_topics": sorted(covered), "needs_doing": needs_doing, "audited_at": audited_at,
+    }
+    if existing_audit.data:
+        await ctx.store.update("content_audits", existing_audit.data[0].id, payload)
+    else:
+        await ctx.store.create("content_audits", payload)
+
+    report = ContentAuditReport(id=params.site_id, title=f"Content audit — {params.site_id}", **payload)
+    return ActionResult.success(
+        report,
+        summary=f"Audited {len(items)} post(s) for '{params.site_id}': "
+                f"{len(thin_urls)} thin, {missing_excerpt} missing excerpt, {len(pairs)} cannibalization pair(s).",
+        refresh_panels=["queue", "sources"],
+    )
+
+
+@chat.function(
+    "get_content_audit",
+    description="Read the most recent content audit for a site (run_content_audit's saved result).",
+    action_type="read",
+    data_model=ContentAuditReport,
+)
+async def get_content_audit(ctx, params: GetContentAuditParams) -> ActionResult:
+    """Read back the most recently saved content-audit report for a site."""
+    page = await ctx.store.query("content_audits", where={"site_id": params.site_id}, limit=1)
+    if not page.data:
+        return ActionResult.error(
+            f"No content audit found for '{params.site_id}' yet. Run run_content_audit first.",
+            retryable=False,
+        )
+    d = page.data[0]
+    report = ContentAuditReport(id=d.id, title=f"Content audit — {params.site_id}", **d.data)
+    return ActionResult.success(report, summary=f"Audit for '{params.site_id}' from {d.data.get('audited_at', '?')}.")
+
+
+@chat.function(
+    "check_keyword_cannibalization",
+    description=(
+        "Check for keyword cannibalization among a site's existing articles -- optionally "
+        "including one NEW candidate keyword/topic, so a duplicate topic is caught BEFORE "
+        "a new article is written, not after it's published and already splitting ranking "
+        "signal with an old one. Requires a content audit to already exist for the site."
+    ),
+    action_type="read",
+    data_model=CannibalizationFindingList,
+)
+async def check_keyword_cannibalization(ctx, params: CheckCannibalizationParams) -> ActionResult:
+    """Re-score the saved audit's articles for cannibalization, optionally
+    also scoring one new candidate keyword against every existing article."""
+    page = await ctx.store.query("cannibalization_findings", where={"site_id": params.site_id}, limit=200)
+    findings = [
+        CannibalizationFinding(id=d.id, title=", ".join(d.data.get("titles", [])[:2]), **d.data)
+        for d in page.data
+    ]
+    if params.candidate_keyword:
+        audit_page = await ctx.store.query("content_audits", where={"site_id": params.site_id}, limit=1)
+        if not audit_page.data:
+            return ActionResult.error(
+                f"No content audit found for '{params.site_id}' yet. Run run_content_audit first.",
+                retryable=False,
+            )
+        candidate_terms = _top_terms(params.candidate_keyword, n=8)
+        try:
+            raw_posts = await ctx.extensions.call(
+                "wp-site-connector", "list_posts_full", site_id=params.site_id, limit=500,
+            )
+        except Exception:
+            raw_posts = []
+        for p in raw_posts or []:
+            terms = _top_terms((p.get("title", "") + " " + p.get("content", "")))
+            score = _term_overlap_score(candidate_terms, terms)
+            if score >= 0.3:
+                findings.append(CannibalizationFinding(
+                    id=f"candidate-{p.get('id')}", title=p.get("title", ""),
+                    site_id=params.site_id, shared_terms=list(set(candidate_terms) & set(terms)),
+                    overlap_score=score, urls=[p.get("link", "")], titles=[p.get("title", "")],
+                    recommendation="differentiate -- an existing article already covers this topic closely",
+                ))
+
+    return ActionResult.success(
+        CannibalizationFindingList(items=findings, total=len(findings)),
+        summary=f"{len(findings)} cannibalization finding(s) for '{params.site_id}'.",
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Opportunity discovery + clustering
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -310,6 +500,21 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
             f"Site profile '{params.site_id}' not found. Create it first with "
             f"create_site_profile.",
             retryable=False,
+        )
+
+    # MANDATORY GATE: never plan new content blind to what already exists.
+    # discover_opportunities must not run before a content audit exists for
+    # this site — the audit is what surfaces thin/duplicate/cannibalizing
+    # existing articles BEFORE new topics get picked, which is the whole
+    # point of auditing first.
+    audit_page = await ctx.store.query("content_audits", where={"site_id": params.site_id}, limit=1)
+    if not audit_page.data:
+        return ActionResult.error(
+            f"No content audit found for '{params.site_id}' yet. Run run_content_audit "
+            f"first -- discovering new opportunities blind to the site's existing content "
+            f"risks duplicating topics and creating keyword cannibalization.",
+            retryable=False,
+            code="CONTENT_AUDIT_REQUIRED",
         )
 
     # existing primary queries for this site — avoid duplicate opportunities
@@ -1268,18 +1473,45 @@ async def sources_panel(ctx, **kwargs) -> object:
     cards = []
     for d in page.data:
         data = d.data
+        site_id = data.get("site_id", d.id)
+        audit_page = await ctx.store.query("content_audits", where={"site_id": site_id}, limit=1)
+        audit_items = [
+            {"key": "Languages", "value": ", ".join(data.get("target_languages", [])) or "—"},
+            {"key": "Categories", "value": ", ".join(data.get("content_categories", [])) or "—"},
+            {"key": "Default CTA", "value": data.get("cta_default", "—")},
+        ]
+        if audit_page.data:
+            audit = audit_page.data[0].data
+            audit_items.append({
+                "key": "Content audit",
+                "value": (
+                    f"{audit.get('total_posts', 0)} posts · {audit.get('thin_content_count', 0)} thin · "
+                    f"{audit.get('cannibalization_pairs_found', 0)} cannibalizing pair(s) · "
+                    f"as of {audit.get('audited_at', '?')}"
+                ),
+            })
+            needs_doing = audit.get("needs_doing", [])
+            audit_body = [ui.KeyValue(columns=1, items=audit_items)]
+            if needs_doing:
+                audit_body.append(ui.Text("Needs doing:", variant="caption"))
+                audit_body.append(ui.List(items=[
+                    ui.ListItem(id=f"needs-{i}", title=item) for i, item in enumerate(needs_doing)
+                ]))
+        else:
+            audit_items.append({"key": "Content audit", "value": "⚠️ Never run — required before new opportunities"})
+            audit_body = [ui.KeyValue(columns=1, items=audit_items)]
+
+        audit_button = ui.Button(
+            "🔎 Run content audit" if not audit_page.data else "🔎 Re-run content audit",
+            variant="secondary", size="sm", full_width=True,
+            on_click=ui.Call("run_content_audit", site_id=site_id),
+        )
+
         cards.append(
             ui.Card(
-                title=data.get("brand_name") or data.get("site_id", d.id),
+                title=data.get("brand_name") or site_id,
                 subtitle=data.get("domain", ""),
-                content=ui.KeyValue(
-                    columns=1,
-                    items=[
-                        {"key": "Languages", "value": ", ".join(data.get("target_languages", [])) or "—"},
-                        {"key": "Categories", "value": ", ".join(data.get("content_categories", [])) or "—"},
-                        {"key": "Default CTA", "value": data.get("cta_default", "—")},
-                    ],
-                ),
+                content=ui.Stack(direction="v", gap=2, children=audit_body + [audit_button]),
             )
         )
 

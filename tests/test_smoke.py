@@ -19,6 +19,14 @@ from schemas import (
 )
 
 
+async def _seed_audit(ctx, site_id: str) -> None:
+    """Satisfy discover_opportunities' mandatory content-audit gate in tests
+    that aren't specifically about the gate itself -- a real caller would run
+    run_content_audit, but that needs a live WP Site Connector IPC call which
+    these older tests don't set up."""
+    await ctx.store.create("content_audits", {"site_id": site_id, "audited_at": "test-seed"})
+
+
 @pytest.mark.asyncio
 async def test_queue_panel_empty_state_has_sites_button():
     """The right-slot Sites panel (where Quick Add lives) is not guaranteed
@@ -37,6 +45,7 @@ async def test_queue_panel_empty_state_has_sites_button():
 async def test_queue_panel_with_items_still_has_sites_button():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
     await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
         site_id="g4s.md",
         signals=[QuerySignal(query="security services chisinau", clicks=10, impressions=200, position=8.0)],
@@ -74,6 +83,7 @@ async def test_discover_opportunities_creates_and_scores():
     await m.create_site_profile(
         ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md")
     )
+    await _seed_audit(ctx, "g4s.md")
     result = await m.discover_opportunities(
         ctx,
         DiscoverOpportunitiesParams(
@@ -96,6 +106,7 @@ async def test_list_opportunities_filters_by_site():
     await m.create_site_profile(
         ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md")
     )
+    await _seed_audit(ctx, "g4s.md")
     await m.discover_opportunities(
         ctx,
         DiscoverOpportunitiesParams(
@@ -118,6 +129,7 @@ async def test_create_brief_and_queue_advances():
     await m.create_site_profile(
         ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md")
     )
+    await _seed_audit(ctx, "g4s.md")
     disc = await m.discover_opportunities(
         ctx,
         DiscoverOpportunitiesParams(
@@ -145,6 +157,7 @@ async def test_update_queue_status_happy_and_missing():
     await m.create_site_profile(
         ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md")
     )
+    await _seed_audit(ctx, "g4s.md")
     disc = await m.discover_opportunities(
         ctx,
         DiscoverOpportunitiesParams(
@@ -178,6 +191,7 @@ async def _site_with_brief_ready_queue_item(ctx, query="security services chisin
     await m.create_site_profile(
         ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md", brand_name="G4S")
     )
+    await _seed_audit(ctx, "g4s.md")
     disc = await m.discover_opportunities(
         ctx,
         DiscoverOpportunitiesParams(
@@ -520,6 +534,7 @@ async def test_create_brief_supports_one_brief_per_language():
     await m.create_site_profile(ctx, CreateSiteProfileParams(
         site_id="climtec.md", domain="climtec.md", target_languages=["ru", "ro"],
     ))
+    await _seed_audit(ctx, "climtec.md")
     discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
         site_id="climtec.md",
         queries=[QuerySignal(query="recuperator de caldura", impressions=10, clicks=1, ctr=0.1, avg_position=15.0)],
@@ -542,3 +557,143 @@ async def test_create_brief_supports_one_brief_per_language():
     queue = await m.list_queue(ctx, ListQueueParams(site_id="climtec.md"))
     langs = sorted(item.target_language for item in queue.data.items if item.opportunity_id == opp_id)
     assert langs == ["ro", "ru"]
+
+
+# ─────────── run_content_audit / get_content_audit / check_keyword_cannibalization ───────────
+
+from schemas import RunContentAuditParams, GetContentAuditParams, CheckCannibalizationParams
+
+
+def _mock_posts_full(posts):
+    async def handler(**kwargs):
+        return posts
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_run_content_audit_flags_thin_and_missing_excerpt():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "Ventilatie", "slug": "ventilatie", "link": "https://climtec.md/ventilatie",
+         "content": "<p>" + ("cuvant " * 50) + "</p>", "excerpt": "", "lang": "ro", "categories": []},
+        {"id": 2, "title": "Climatizare", "slug": "climatizare", "link": "https://climtec.md/climatizare",
+         "content": "<p>" + ("aer conditionat instalare service " * 200) + "</p>",
+         "excerpt": "Ghid complet", "lang": "ro", "categories": []},
+    ]))
+    result = await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    assert result.status == "success"
+    assert result.data.total_posts == 2
+    assert result.data.thin_content_count == 1
+    assert result.data.missing_excerpt_count == 1
+    assert result.data.needs_doing  # never silently empty when there IS something to do
+
+
+@pytest.mark.asyncio
+async def test_run_content_audit_detects_cannibalization_pair():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
+    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "Cum alegi sistemul de ventilare A", "slug": "a", "link": "https://climtec.md/a",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "x", "lang": "ro", "categories": []},
+        {"id": 2, "title": "Cum alegi sistemul de ventilare B", "slug": "b", "link": "https://climtec.md/b",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "y", "lang": "ro", "categories": []},
+    ]))
+    result = await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    assert result.status == "success"
+    assert result.data.cannibalization_pairs_found >= 1
+
+
+@pytest.mark.asyncio
+async def test_run_content_audit_missing_site_profile_errors():
+    ctx = MockContext()
+    result = await m.run_content_audit(ctx, RunContentAuditParams(site_id="nope.md"))
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_get_content_audit_without_prior_run_errors():
+    ctx = MockContext()
+    result = await m.get_content_audit(ctx, GetContentAuditParams(site_id="climtec.md"))
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_get_content_audit_reads_back_saved_report():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "X", "slug": "x", "link": "https://climtec.md/x",
+         "content": "<p>" + ("word " * 400) + "</p>", "excerpt": "e", "lang": "ro", "categories": []},
+    ]))
+    await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    result = await m.get_content_audit(ctx, GetContentAuditParams(site_id="climtec.md"))
+    assert result.status == "success"
+    assert result.data.total_posts == 1
+
+
+@pytest.mark.asyncio
+async def test_discover_opportunities_blocked_without_content_audit():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    result = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md",
+        queries=[QuerySignal(query="test query", impressions=10, clicks=1, ctr=0.1, avg_position=10.0)],
+    ))
+    assert result.status == "error"
+    assert result.error_code == "CONTENT_AUDIT_REQUIRED"
+
+
+@pytest.mark.asyncio
+async def test_check_keyword_cannibalization_flags_candidate_against_existing():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
+    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "Cum alegi sistemul de ventilare pentru spatii comerciale",
+         "slug": "a", "link": "https://climtec.md/a",
+         "content": f"<p>{shared_text} {shared_text} {shared_text}</p>", "excerpt": "x",
+         "lang": "ro", "categories": []},
+    ]))
+    await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    result = await m.check_keyword_cannibalization(ctx, CheckCannibalizationParams(
+        site_id="climtec.md",
+        candidate_keyword="sistem ventilatie comerciala birou spatiu instalare",
+    ))
+    assert result.status == "success"
+    assert result.data.total >= 1
+
+
+@pytest.mark.asyncio
+async def test_check_keyword_cannibalization_requires_audit_for_candidate_check():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    result = await m.check_keyword_cannibalization(ctx, CheckCannibalizationParams(
+        site_id="climtec.md", candidate_keyword="anything",
+    ))
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_shows_audit_status_and_needs_doing():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "X", "slug": "x", "link": "https://climtec.md/x",
+         "content": "<p>" + ("word " * 50) + "</p>", "excerpt": "", "lang": "ro", "categories": []},
+    ]))
+    await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "Content audit" in rendered
+    assert "Needs doing" in rendered or "thin" in rendered.lower()
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_shows_never_audited_warning():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "Never run" in rendered

@@ -160,3 +160,78 @@ def to_site_competitor(d) -> "SiteCompetitorProfile":
         strengths=data.get("strengths", []),
         weaknesses=data.get("weaknesses", []),
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Content audit + keyword cannibalization heuristics
+# ──────────────────────────────────────────────────────────────────────────
+
+_TAG_RE = re.compile(r"<[^>]+>")
+_WORD_RE = re.compile(r"[a-zA-Zа-яА-ЯёЁăâîșțĂÂÎȘȚ]+")
+_THIN_WORD_THRESHOLD = 300
+
+
+def strip_html(html: str) -> str:
+    """Plain text from WP REST 'rendered' HTML — good enough for word counts
+    and keyword-term extraction, not a real HTML sanitizer."""
+    if not html:
+        return ""
+    text = _TAG_RE.sub(" ", html)
+    import html as _html
+    return _html.unescape(text)
+
+
+def word_count(html: str) -> int:
+    text = strip_html(html)
+    return len(_WORD_RE.findall(text))
+
+
+def top_terms(text_or_html: str, n: int = 12) -> list[str]:
+    """Cheap term-frequency signature for one article: strips HTML/stopwords,
+    keeps the n most frequent significant tokens (len > 3). Same technique as
+    cluster_label, just wider — this is a *signature*, not a real NLP topic
+    model, so cannibalization scoring below is a heuristic, not a guarantee."""
+    text = strip_html(text_or_html).lower()
+    tokens = [t for t in _WORD_RE.findall(text) if t not in _STOPWORDS and len(t) > 3]
+    if not tokens:
+        return []
+    freq: dict[str, int] = {}
+    for t in tokens:
+        freq[t] = freq.get(t, 0) + 1
+    ranked = sorted(freq.items(), key=lambda kv: -kv[1])
+    return [t for t, _ in ranked[:n]]
+
+
+def term_overlap_score(terms_a: list[str], terms_b: list[str]) -> float:
+    """Jaccard-style overlap of two term signatures, 0..1."""
+    a, b = set(terms_a), set(terms_b)
+    if not a or not b:
+        return 0.0
+    inter = a & b
+    union = a | b
+    return round(len(inter) / len(union), 3) if union else 0.0
+
+
+def find_cannibalization_pairs(items: list[dict], min_overlap: float = 0.35) -> list[dict]:
+    """Pairwise-compare every existing article's term signature against every
+    other and flag pairs above min_overlap as competing for the same topic.
+    O(n^2) — fine for a site's article count (dozens-hundreds), not meant
+    for a directory with tens of thousands of posts."""
+    findings = []
+    for i in range(len(items)):
+        for j in range(i + 1, len(items)):
+            a, b = items[i], items[j]
+            score = term_overlap_score(a.get("top_terms", []), b.get("top_terms", []))
+            if score >= min_overlap:
+                shared = sorted(set(a.get("top_terms", [])) & set(b.get("top_terms", [])))
+                findings.append({
+                    "shared_terms": shared,
+                    "overlap_score": score,
+                    "urls": [a.get("link", ""), b.get("link", "")],
+                    "titles": [a.get("title", ""), b.get("title", "")],
+                    "recommendation": (
+                        "merge into one canonical article" if score >= 0.6
+                        else "differentiate angle/keyword focus or add internal canonical link"
+                    ),
+                })
+    return findings

@@ -44,6 +44,27 @@ def cluster_label(query: str) -> str:
     return " ".join(sig[:2]) if sig else query.lower()[:24]
 
 
+_CYRILLIC_RE = re.compile(r"[а-яА-ЯёЁ]")
+_LATIN_RE = re.compile(r"[a-zA-Z]")
+
+
+def detect_language_fallback(title: str, content: str) -> str:
+    """Best-effort language guess used ONLY when WordPress/Polylang did not
+    report a 'lang' field for a post (run_content_audit's posts_by_language
+    was always {"unknown": N} on real bilingual sites before this existed).
+    Purely a Cyrillic-vs-Latin script ratio -- deterministic, no fabrication,
+    no external calls. Distinguishes ru (Cyrillic) from ro/en (Latin) but
+    CANNOT distinguish between two Latin-script languages (e.g. ro vs en) --
+    returns 'ru' or 'latin' accordingly, never invents a specific Latin
+    language code it cannot actually tell apart."""
+    text = f"{title} {content}"
+    cyr = len(_CYRILLIC_RE.findall(text))
+    lat = len(_LATIN_RE.findall(text))
+    if cyr == 0 and lat == 0:
+        return "unknown"
+    return "ru" if cyr > lat else "latin"
+
+
 def priority_score(impressions: int, clicks: int, ctr: float, avg_position: float) -> float:
     """Simple striking-distance-weighted score: reward high impressions with
     low clicks (untapped demand) and positions in the 4-20 'almost ranking'
@@ -144,9 +165,11 @@ def to_site_profile(d) -> SiteProfile:
         domain=data.get("domain", ""),
         brand_name=data.get("brand_name", ""),
         business_description=data.get("business_description", ""),
+        business_description_i18n=data.get("business_description_i18n", {}),
         target_languages=data.get("target_languages", []),
         content_categories=data.get("content_categories", []),
         cta_default=data.get("cta_default", ""),
+        cta_default_i18n=data.get("cta_default_i18n", {}),
     )
 
 

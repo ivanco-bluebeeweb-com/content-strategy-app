@@ -21,9 +21,11 @@ class SiteProfile(sdl.Entity):
     domain: str = ""
     brand_name: str = ""
     business_description: str = ""
+    business_description_i18n: dict[str, str] = {}  # optional per-language override, e.g. {"ru": "...", "ro": "..."}
     target_languages: list[str] = []
     content_categories: list[str] = []
     cta_default: str = ""
+    cta_default_i18n: dict[str, str] = {}  # optional per-language override for cta_default
 
 
 class SiteProfileList(sdl.EntityList[SiteProfile]):
@@ -181,9 +183,11 @@ class CreateSiteProfileParams(BaseModel):
     domain: str = Field(description="Domain, e.g. 'g4s.md'")
     brand_name: str = Field("", description="Brand/company name")
     business_description: str = Field("", description="One or two sentences on what the business does")
+    business_description_i18n: dict[str, str] = Field(default_factory=dict, description="Optional per-language override of business_description, e.g. {'ru': '...', 'ro': '...'} — used by create_brief so target_audience is written in the brief's actual target_language instead of always falling back to business_description")
     target_languages: list[str] = Field(default_factory=list, description="Target languages for content, e.g. ['ru','ro']")
     content_categories: list[str] = Field(default_factory=list, description="Content categories/topics this site covers")
     cta_default: str = Field("", description="Default call-to-action goal for articles on this site")
+    cta_default_i18n: dict[str, str] = Field(default_factory=dict, description="Optional per-language override of cta_default, e.g. {'ru': '...', 'ro': '...'}")
 
 
 class ListSiteProfilesParams(BaseModel):

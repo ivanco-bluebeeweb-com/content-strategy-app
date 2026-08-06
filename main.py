@@ -43,6 +43,7 @@ from schemas import (
 )
 from converters import (
     guess_intent, cluster_label, priority_score,
+    detect_language_fallback as _detect_language_fallback,
     to_opportunity as _to_opportunity,
     to_brief as _to_brief,
     to_calendar_entry as _to_calendar_entry,
@@ -206,9 +207,11 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
             "domain": params.domain,
             "brand_name": params.brand_name,
             "business_description": params.business_description,
+            "business_description_i18n": params.business_description_i18n,
             "target_languages": params.target_languages,
             "content_categories": params.content_categories,
             "cta_default": params.cta_default,
+            "cta_default_i18n": params.cta_default_i18n,
         },
     )
     return ActionResult.success(
@@ -356,7 +359,7 @@ async def run_content_audit(ctx, params: RunContentAuditParams) -> ActionResult:
     for p in raw_posts or []:
         wc = _word_count(p.get("content", ""))
         terms = _top_terms((p.get("title", "") + " " + p.get("content", "")))
-        lang = p.get("lang") or "unknown"
+        lang = p.get("lang") or _detect_language_fallback(p.get("title", ""), p.get("content", ""))
         posts_by_lang[lang] = posts_by_lang.get(lang, 0) + 1
         is_thin = wc < 300
         if is_thin:
@@ -402,6 +405,16 @@ async def run_content_audit(ctx, params: RunContentAuditParams) -> ActionResult:
         await ctx.store.update("content_audits", existing_audit.data[0].id, payload)
     else:
         await ctx.store.create("content_audits", payload)
+
+    # Persist each individual item too (not just the aggregate report) so
+    # create_brief can look up existing posts on overlapping topics and
+    # populate internal_link_targets -- previously that field was always []
+    # because no per-post record survived past this function's local scope.
+    old_items_page = await ctx.store.query("existing_content_items", where={"site_id": params.site_id}, limit=500)
+    for old in old_items_page.data:
+        await ctx.store.delete("existing_content_items", old.id)
+    for it in items:
+        await ctx.store.create("existing_content_items", {"site_id": params.site_id, **it})
 
     report = ContentAuditReport(id=params.site_id, title=f"Content audit — {params.site_id}", **payload)
     return ActionResult.success(
@@ -541,37 +554,90 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
             code="CONTENT_AUDIT_REQUIRED",
         )
 
-    # existing primary queries for this site — avoid duplicate opportunities
+    # existing primary + supporting queries for this site — avoid duplicate
+    # opportunities and avoid re-clustering a query already folded into one
     existing_page = await ctx.store.query("opportunities", limit=500)
-    existing_queries = {
-        d.data.get("primary_query", "").lower()
-        for d in existing_page.data
-        if d.data.get("site_id") == params.site_id
+    existing_queries: set[str] = set()
+    for d in existing_page.data:
+        if d.data.get("site_id") != params.site_id:
+            continue
+        existing_queries.add(d.data.get("primary_query", "").lower())
+        existing_queries.update(q.lower() for q in d.data.get("supporting_queries", []))
+
+    site_content_categories = {
+        c.lower() for c in profile_page.data[0].data.get("content_categories", [])
     }
 
-    created: list[Opportunity] = []
+    # CLUSTERING: group incoming signals by cluster_label BEFORE creating
+    # opportunities, so synonymous queries (e.g. "recuperator caldura" /
+    # "recuperatoare caldura" / "recuperator de caldura") collapse into ONE
+    # opportunity instead of one-opportunity-per-query. Within each cluster,
+    # the highest-scoring signal becomes primary_query and the rest become
+    # supporting_queries; impressions/clicks are summed across the cluster
+    # so the priority score reflects the topic's real combined demand.
+    clusters: dict[str, list] = {}
+    skipped_duplicates = 0
     for sig in params.queries[: params.limit]:
         if sig.query.lower() in existing_queries:
+            skipped_duplicates += 1
             continue
-        intent = guess_intent(sig.query)
         label = cluster_label(sig.query)
-        score = priority_score(sig.impressions, sig.clicks, sig.ctr, sig.avg_position)
+        clusters.setdefault(label, []).append(sig)
+
+    created: list[Opportunity] = []
+    for label, sigs in clusters.items():
+        sigs_scored = [
+            (sig, priority_score(sig.impressions, sig.clicks, sig.ctr, sig.avg_position))
+            for sig in sigs
+        ]
+        sigs_scored.sort(key=lambda pair: pair[1], reverse=True)
+        primary_sig, _ = sigs_scored[0]
+        supporting = [sig.query for sig, _ in sigs_scored[1:]]
+
+        total_impressions = sum(sig.impressions for sig in sigs)
+        total_clicks = sum(sig.clicks for sig in sigs)
+        # weighted avg position/ctr by impressions, falling back to the
+        # primary signal's own numbers when impressions are all zero
+        if total_impressions > 0:
+            avg_position = sum(sig.avg_position * sig.impressions for sig in sigs) / total_impressions
+            ctr = total_clicks / total_impressions
+        else:
+            avg_position = primary_sig.avg_position
+            ctr = primary_sig.ctr
+
+        intent = guess_intent(primary_sig.query)
+        score = priority_score(total_impressions, total_clicks, ctr, avg_position)
+
+        # business relevance: does this topic overlap with the site's own
+        # declared content categories? Cheap token-overlap heuristic — not a
+        # real semantic match, but no longer a hardcoded 0.0.
+        cluster_tokens = set(label.split())
+        relevance = 0.0
+        if site_content_categories and cluster_tokens:
+            hits = sum(
+                1 for cat in site_content_categories
+                if any(tok in cat or cat in tok for tok in cluster_tokens)
+            )
+            relevance = round(min(hits / max(len(site_content_categories), 1), 1.0) * 100, 1)
+
+        total_score = round(score * 0.7 + relevance * 0.3, 1)
+
         doc = await ctx.store.create(
             "opportunities",
             {
                 "site_id": params.site_id,
-                "source": sig.source,
-                "primary_query": sig.query,
-                "supporting_queries": [],
+                "source": primary_sig.source,
+                "primary_query": primary_sig.query,
+                "supporting_queries": supporting,
                 "query_cluster_label": label,
                 "intent": intent,
-                "impressions": sig.impressions,
-                "clicks": sig.clicks,
-                "ctr": sig.ctr,
-                "avg_position": sig.avg_position,
-                "business_relevance_score": 0.0,
+                "impressions": total_impressions,
+                "clicks": total_clicks,
+                "ctr": round(ctr, 4),
+                "avg_position": round(avg_position, 1),
+                "business_relevance_score": relevance,
                 "seo_opportunity_score": score,
-                "total_priority_score": score,
+                "total_priority_score": total_score,
                 "recommended_content_type": "article",
                 "recommended_target_url": "",
                 "status": "idea",
@@ -587,7 +653,7 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
                 "lifecycle_status": "idea",
                 "assigned_agent": "Webbee",
                 "published_url": "",
-                "primary_query": sig.query,
+                "primary_query": primary_sig.query,
             },
         )
         created.append(_to_opportunity(doc))
@@ -597,7 +663,8 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
         OpportunityList(items=created, total=len(created)),
         summary=(
             f"Found {len(created)} new opportunity(ies) for {params.site_id} "
-            f"({len(params.queries) - len(created)} skipped as duplicates)."
+            f"clustered from {len(params.queries) - skipped_duplicates} query signal(s) "
+            f"({skipped_duplicates} skipped as duplicates)."
         ),
         refresh_panels=["queue"],
     )
@@ -660,6 +727,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
     profile = profile_page.data[0].data if profile_page.data else {}
 
     target_language = params.target_language or (profile.get("target_languages") or ["en"])[0]
+    lang_key = target_language.lower()[:2]
 
     # one brief per (opportunity, language) — refuse a silent duplicate
     existing_briefs = await ctx.store.query("article_briefs", limit=500)
@@ -672,17 +740,69 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
                 retryable=False,
             )
 
+    # Outline skeleton labels are OUR OWN scaffolding text (not brand copy),
+    # so they can be honestly localized by target_language. site_profile's
+    # business_description/cta_default are single unlocalized strings (see
+    # schemas.SiteProfile) — target_audience/cta_goal below still fall back
+    # to that single string because we have no per-language brand copy to
+    # draw from; inventing a translation here would be fabricating content,
+    # not fixing a bug. A real fix needs per-language fields on SiteProfile.
+    _OUTLINE_LABELS = {
+        "ro": {
+            "intro": "Introducere — de ce este important pentru cititor",
+            "main": "Secțiune(i) principală(e) care acoperă întrebările secundare",
+            "practical": "Recomandări practice / acționabile",
+            "cta": "CTA",
+        },
+        "ru": {
+            "intro": "Введение — почему это важно для читателя",
+            "main": "Основной(е) раздел(ы), охватывающий(е) сопутствующие запросы",
+            "practical": "Практические / применимые рекомендации",
+            "cta": "Призыв к действию",
+        },
+        "en": {
+            "intro": "Intro — why this matters for the reader",
+            "main": "Main section(s) covering supporting queries",
+            "practical": "Practical/actionable guidance",
+            "cta": "CTA",
+        },
+    }
+    labels = _OUTLINE_LABELS.get(lang_key, _OUTLINE_LABELS["en"])
     outline = [
         f"H1: {opp.get('primary_query', '').capitalize()}",
-        "Intro — why this matters for the reader",
-        "Main section(s) covering supporting queries",
-        "Practical/actionable guidance",
-        f"CTA: {profile.get('cta_default', 'contact us')}",
+        labels["intro"],
+        labels["main"],
+        labels["practical"],
+        f"{labels['cta']}: {profile.get('cta_default', 'contact us')}",
     ]
     image_requirements = [
         "featured: hero image representing the primary topic",
         "inline_1: supporting visual for the main section",
     ]
+
+    # internal_link_targets: find existing published posts (from the last
+    # run_content_audit) on an overlapping topic, in the SAME language as
+    # this brief, so the generated article has somewhere real to link
+    # internally -- previously this was always [] even when overlapping
+    # posts existed, because nothing ever populated it.
+    opp_terms = _top_terms(
+        opp.get("primary_query", "") + " " + " ".join(opp.get("supporting_queries", []))
+    )
+    internal_link_targets: list[str] = []
+    if opp_terms:
+        existing_items_page = await ctx.store.query(
+            "existing_content_items", where={"site_id": opp.get("site_id", "")}, limit=500
+        )
+        scored = []
+        for d in existing_items_page.data:
+            item = d.data
+            if item.get("lang") not in (target_language, lang_key, ""):
+                continue
+            overlap = _term_overlap_score(opp_terms, item.get("top_terms", []))
+            if overlap > 0:
+                scored.append((overlap, item.get("link", "")))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        internal_link_targets = [link for _, link in scored[:3] if link]
 
     brief_doc = await ctx.store.create(
         "article_briefs",
@@ -691,13 +811,19 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "opportunity_id": params.opportunity_id,
             "working_title": opp.get("primary_query", "").capitalize(),
             "target_language": target_language,
-            "target_audience": profile.get("business_description", ""),
+            "target_audience": (
+                profile.get("business_description_i18n", {}).get(target_language)
+                or profile.get("business_description", "")
+            ),
             "search_intent": opp.get("intent", "informational"),
             "primary_query": opp.get("primary_query", ""),
             "secondary_queries": opp.get("supporting_queries", []),
             "outline": outline,
-            "cta_goal": profile.get("cta_default", ""),
-            "internal_link_targets": [],
+            "cta_goal": (
+                profile.get("cta_default_i18n", {}).get(target_language)
+                or profile.get("cta_default", "")
+            ),
+            "internal_link_targets": internal_link_targets,
             "differentiation_notes": "",
             "image_requirements": image_requirements,
             "status": "brief_ready",
@@ -1089,6 +1215,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
     collections = [
         "opportunities", "article_briefs", "queue_items",
         "site_competitors", "content_audits", "cannibalization_findings",
+        "existing_content_items",
     ]
     removed = {}
     for coll in collections:

@@ -26,7 +26,7 @@ from schemas import (
     CreateSiteProfileParams, DiscoverOpportunitiesParams,
     GetContentCalendarParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
-    ListSiteProfilesParams, UpdateQueueStatusParams,
+    ListSiteProfilesParams, UpdateQueueStatusParams, UpdateSiteProfileParams,
     ArticleBrief, ArticleBriefList,
     ContentCalendarEntry, ContentCalendarEntryList,
     Opportunity, OpportunityList,
@@ -217,7 +217,51 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
     return ActionResult.success(
         _to_site_profile(doc),
         summary=f"Site profile '{params.site_id}' created.",
-        refresh_panels=["queue"],
+        refresh_panels=["sources"],
+    )
+
+
+@chat.function(
+    "update_site_profile",
+    description=(
+        "Update selected fields of an existing site profile -- domain, brand, "
+        "business description (incl. per-language overrides), target "
+        "languages, content categories, or default CTA (incl. per-language "
+        "overrides). Only given fields change. Use this to refresh a profile "
+        "after re-running Brand Strategy Hub's build_content_strategy_handoff "
+        "-- create_site_profile refuses to run again once a site_id exists."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["update:site_profile"],
+    event="updated",
+    data_model=SiteProfile,
+)
+async def update_site_profile(ctx, params: UpdateSiteProfileParams) -> ActionResult:
+    """Patch an existing site profile with only the given fields."""
+    existing = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not existing.data:
+        return ActionResult.error(
+            f"Site profile '{params.site_id}' not found. Create it first with create_site_profile.",
+            retryable=False,
+        )
+    doc_id = existing.data[0].id
+    updates = {}
+    for field in ("brand_name", "business_description", "cta_default"):
+        value = getattr(params, field)
+        if value is not None:
+            updates[field] = value
+    for field in ("business_description_i18n", "target_languages", "content_categories", "cta_default_i18n"):
+        value = getattr(params, field)
+        if value is not None:
+            updates[field] = value
+    if not updates:
+        return ActionResult.error("No fields given to update.", retryable=False)
+    updated = await ctx.store.update("site_profiles", doc_id, updates)
+    return ActionResult.success(
+        _to_site_profile(updated),
+        summary=f"Site profile '{params.site_id}' updated.",
+        refresh_panels=["sources"],
     )
 
 
@@ -609,16 +653,21 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
         score = priority_score(total_impressions, total_clicks, ctr, avg_position)
 
         # business relevance: does this topic overlap with the site's own
-        # declared content categories? Cheap token-overlap heuristic — not a
-        # real semantic match, but no longer a hardcoded 0.0.
+        # declared content categories? Tokenizes both sides (categories are
+        # often multi-word phrases like "eficiență energetică HVAC" -- a
+        # single-token substring check against that whole phrase would
+        # almost never match, silently keeping this at 0.0). Cheap
+        # token-overlap heuristic -- not real semantic matching, but no
+        # longer hardcoded 0.0 and no longer defeated by phrase-vs-token
+        # length mismatch.
         cluster_tokens = set(label.split())
+        category_tokens: set[str] = set()
+        for cat in site_content_categories:
+            category_tokens.update(cat.split())
         relevance = 0.0
-        if site_content_categories and cluster_tokens:
-            hits = sum(
-                1 for cat in site_content_categories
-                if any(tok in cat or cat in tok for tok in cluster_tokens)
-            )
-            relevance = round(min(hits / max(len(site_content_categories), 1), 1.0) * 100, 1)
+        if category_tokens and cluster_tokens:
+            hits = len(cluster_tokens & category_tokens)
+            relevance = round(min(hits / max(len(cluster_tokens), 1), 1.0) * 100, 1)
 
         total_score = round(score * 0.7 + relevance * 0.3, 1)
 

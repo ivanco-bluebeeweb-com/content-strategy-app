@@ -32,6 +32,22 @@ class SiteProfileList(sdl.EntityList[SiteProfile]):
     pass
 
 
+class UpdateSiteProfileParams(BaseModel):
+    """Patch an existing site profile with only the given fields. Needed so
+    a re-run of build_content_strategy_handoff (Brand Strategy Hub) can
+    actually refresh a site profile's content_categories/business_description
+    etc. -- create_site_profile refuses to run again once a site_id exists,
+    and until this existed there was NO way to update one afterwards."""
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    brand_name: str | None = Field(default=None, description="New brand name; omit to keep")
+    business_description: str | None = Field(default=None, description="New business description; omit to keep")
+    business_description_i18n: dict[str, str] | None = Field(default=None, description="Replace per-language business_description overrides; omit to keep")
+    target_languages: list[str] | None = Field(default=None, description="Replace target languages; omit to keep")
+    content_categories: list[str] | None = Field(default=None, description="Replace content categories/topics; omit to keep")
+    cta_default: str | None = Field(default=None, description="New default CTA; omit to keep")
+    cta_default_i18n: dict[str, str] | None = Field(default=None, description="Replace per-language CTA overrides; omit to keep")
+
+
 class Opportunity(sdl.Entity):
     """One candidate content opportunity, sourced from GSC / SEO Audit / manual."""
     site_id: str = ""

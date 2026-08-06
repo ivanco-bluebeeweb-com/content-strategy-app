@@ -817,12 +817,22 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         },
     }
     labels = _OUTLINE_LABELS.get(lang_key, _OUTLINE_LABELS["en"])
+    # localized CTA copy: prefer the per-language override (cta_default_i18n)
+    # for THIS target_language, falling back to the single unlocalized
+    # cta_default string. Computed once here and reused below for cta_goal
+    # so the outline's own CTA line and the brief's cta_goal field never
+    # disagree (previously the outline always used the unlocalized
+    # cta_default even when target_language differed).
+    localized_cta = (
+        profile.get("cta_default_i18n", {}).get(target_language)
+        or profile.get("cta_default", "contact us")
+    )
     outline = [
         f"H1: {opp.get('primary_query', '').capitalize()}",
         labels["intro"],
         labels["main"],
         labels["practical"],
-        f"{labels['cta']}: {profile.get('cta_default', 'contact us')}",
+        f"{labels['cta']}: {localized_cta}",
     ]
     image_requirements = [
         "featured: hero image representing the primary topic",
@@ -834,6 +844,16 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
     # this brief, so the generated article has somewhere real to link
     # internally -- previously this was always [] even when overlapping
     # posts existed, because nothing ever populated it.
+    #
+    # Language matching must account for detect_language_fallback's script-only
+    # output: it can only tell "ru" (Cyrillic) from "latin" (any Latin-script
+    # language, e.g. ro/en) -- it never emits an ISO code like "ro". A strict
+    # equality check against target_language ("ro") therefore NEVER matched
+    # "latin", so Latin-script briefs got zero internal links even when
+    # matching posts existed. Any non-Cyrillic target_language accepts "latin".
+    lang_matches = {target_language, lang_key, ""}
+    if lang_key != "ru":
+        lang_matches.add("latin")
     opp_terms = _top_terms(
         opp.get("primary_query", "") + " " + " ".join(opp.get("supporting_queries", []))
     )
@@ -845,7 +865,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         scored = []
         for d in existing_items_page.data:
             item = d.data
-            if item.get("lang") not in (target_language, lang_key, ""):
+            if item.get("lang") not in lang_matches:
                 continue
             overlap = _term_overlap_score(opp_terms, item.get("top_terms", []))
             if overlap > 0:
@@ -868,10 +888,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "primary_query": opp.get("primary_query", ""),
             "secondary_queries": opp.get("supporting_queries", []),
             "outline": outline,
-            "cta_goal": (
-                profile.get("cta_default_i18n", {}).get(target_language)
-                or profile.get("cta_default", "")
-            ),
+            "cta_goal": localized_cta,
             "internal_link_targets": internal_link_targets,
             "differentiation_notes": "",
             "image_requirements": image_requirements,

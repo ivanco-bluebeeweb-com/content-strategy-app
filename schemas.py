@@ -397,6 +397,28 @@ class GetContentAuditParams(BaseModel):
     site_id: str = Field(description="Site id from list_site_profiles — never invent it")
 
 
+class PurgePipelineDataParams(BaseModel):
+    confirm_wipe: bool = Field(
+        False,
+        description=(
+            "Must be explicitly true to run the purge. Safety flag so this can "
+            "never fire by accident from a misread instruction."
+        ),
+    )
+
+
+class PurgeResult(sdl.Entity):
+    """Outcome of a full pipeline data wipe — counts removed per collection,
+    and which site profiles were kept untouched."""
+    opportunities_removed: int = 0
+    briefs_removed: int = 0
+    queue_items_removed: int = 0
+    competitors_removed: int = 0
+    content_audits_removed: int = 0
+    cannibalization_findings_removed: int = 0
+    kept_site_ids: list[str] = Field(default_factory=list)
+
+
 class CheckCannibalizationParams(BaseModel):
     site_id: str = Field(description="Site id from list_site_profiles — never invent it")
     candidate_keyword: str = Field(

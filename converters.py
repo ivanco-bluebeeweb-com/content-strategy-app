@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import re
 
-from schemas import ArticleBrief, ContentCalendarEntry, Opportunity, QueueItem, SiteProfile
+from schemas import (
+    ArticleBrief, ContentCalendarEntry, Opportunity, QueueItem, SiteProfile,
+    SiteCompetitorProfile,
+)
 
 _INTENT_COMMERCIAL_HINTS = (
     "buy", "price", "cost", "quote", "hire", "service", "company", "near me",
@@ -147,8 +150,7 @@ def to_site_profile(d) -> SiteProfile:
     )
 
 
-def to_site_competitor(d) -> "SiteCompetitorProfile":
-    from schemas import SiteCompetitorProfile
+def to_site_competitor(d) -> SiteCompetitorProfile:
     data = d.data
     return SiteCompetitorProfile(
         id=d.id,

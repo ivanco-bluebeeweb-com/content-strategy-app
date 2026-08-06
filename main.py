@@ -39,6 +39,7 @@ from schemas import (
     AddSiteCompetitorParams, ListSiteCompetitorsParams,
     ContentAuditReport, RunContentAuditParams, GetContentAuditParams,
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
+    PurgePipelineDataParams, PurgeResult,
 )
 from converters import (
     guess_intent, cluster_label, priority_score,
@@ -1043,6 +1044,87 @@ async def update_queue_status(ctx, params: UpdateQueueStatusParams) -> ActionRes
         _to_queue_item(doc),
         summary=f"Queue item moved to '{params.lifecycle_status}'.",
         refresh_panels=["queue"],
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Full pipeline wipe -- keeps only registered site profiles (connected
+# sites), removes every piece of downstream working content: opportunities,
+# briefs, queue items, tracked competitors, content audits, and
+# cannibalization findings. Irreversible -- gated by an explicit
+# confirm_wipe flag so it can never fire from a misread instruction.
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "purge_pipeline_data",
+    description=(
+        "Wipe ALL working pipeline data for every site -- opportunities, "
+        "article briefs, editorial queue items, tracked site competitors, "
+        "content audits, and cannibalization findings. Site profiles "
+        "themselves (the connected sites) are NEVER touched -- only the "
+        "downstream content-strategy work built on top of them. "
+        "Irreversible. Requires confirm_wipe=true."
+    ),
+    action_type="destructive",
+    chain_callable=True,
+    effects=[
+        "delete:opportunity", "delete:article_brief", "delete:queue_item",
+        "delete:site_competitor", "delete:content_audit",
+        "delete:cannibalization_finding",
+    ],
+    event="pipeline_purged",
+    data_model=PurgeResult,
+)
+async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionResult:
+    """Delete every pipeline working record, keeping only site profiles."""
+    if not params.confirm_wipe:
+        return ActionResult.error(
+            "Refusing to wipe pipeline data without confirm_wipe=true. "
+            "This deletes ALL opportunities, briefs, queue items, tracked "
+            "competitors, content audits, and cannibalization findings -- "
+            "irreversibly. Re-call with confirm_wipe=true to proceed.",
+            retryable=True,
+        )
+
+    collections = [
+        "opportunities", "article_briefs", "queue_items",
+        "site_competitors", "content_audits", "cannibalization_findings",
+    ]
+    removed = {}
+    for coll in collections:
+        page = await ctx.store.query(coll, limit=1000)
+        count = 0
+        for doc in page.data:
+            await ctx.store.delete(coll, doc.id)
+            count += 1
+        removed[coll] = count
+
+    profiles_page = await ctx.store.query("site_profiles", limit=200)
+    kept_site_ids = [d.data.get("site_id", d.id) for d in profiles_page.data]
+
+    result = PurgeResult(
+        id="pipeline-purge",
+        title="Pipeline data purge",
+        opportunities_removed=removed["opportunities"],
+        briefs_removed=removed["article_briefs"],
+        queue_items_removed=removed["queue_items"],
+        competitors_removed=removed["site_competitors"],
+        content_audits_removed=removed["content_audits"],
+        cannibalization_findings_removed=removed["cannibalization_findings"],
+        kept_site_ids=kept_site_ids,
+    )
+    total = sum(removed.values())
+    return ActionResult.success(
+        result,
+        summary=(
+            f"Purged {total} pipeline record(s) "
+            f"({removed['opportunities']} opportunities, {removed['article_briefs']} briefs, "
+            f"{removed['queue_items']} queue items, {removed['site_competitors']} competitors, "
+            f"{removed['content_audits']} content audits, "
+            f"{removed['cannibalization_findings']} cannibalization findings). "
+            f"Kept {len(kept_site_ids)} connected site(s): {', '.join(kept_site_ids) or '—'}."
+        ),
+        refresh_panels=["queue", "sources"],
     )
 
 

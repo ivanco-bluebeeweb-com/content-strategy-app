@@ -103,6 +103,27 @@ def _canonical_site_id(row: dict) -> str:
     return host or (row.get("site_id") or "")
 
 
+async def _resolve_wp_site_id(ctx, site_id: str) -> str:
+    """Translate this app's domain-form site_id ('climtec.md') into the WP
+    Site Connector's own slug-form id ('climtec-md') before any IPC call.
+
+    Without this, run_content_audit/check_keyword_cannibalization silently
+    got zero posts back for every real site: list_posts_full does an exact
+    match against WP Site Connector's own record id, which is never the
+    bare domain. Falls back to the naive dot-to-hyphen slug (matching
+    wp_client.site_id_from_url's own scheme) if the connector lookup fails,
+    so a transient IPC error degrades gracefully instead of hard-failing.
+    """
+    try:
+        rows = await ctx.extensions.call("wp-site-connector", "list_connected_sites")
+    except Exception:
+        rows = []
+    for r in rows or []:
+        if _canonical_site_id(r) == site_id:
+            return r.get("site_id", site_id)
+    return site_id.strip().lower().replace(".", "-")
+
+
 async def fetch_connected_sites(ctx) -> tuple[list[dict], list[dict]]:
     """Pull every connected site from every registered site-provider
     extension via ctx.extensions.call -- direct in-process IPC (no chat
@@ -314,9 +335,10 @@ async def run_content_audit(ctx, params: RunContentAuditParams) -> ActionResult:
             retryable=False,
         )
 
+    wp_site_id = await _resolve_wp_site_id(ctx, params.site_id)
     try:
         raw_posts = await ctx.extensions.call(
-            "wp-site-connector", "list_posts_full", site_id=params.site_id, limit=500,
+            "wp-site-connector", "list_posts_full", site_id=wp_site_id, limit=500,
         )
     except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
         return ActionResult.error(
@@ -435,9 +457,10 @@ async def check_keyword_cannibalization(ctx, params: CheckCannibalizationParams)
                 retryable=False,
             )
         candidate_terms = _top_terms(params.candidate_keyword, n=8)
+        wp_site_id = await _resolve_wp_site_id(ctx, params.site_id)
         try:
             raw_posts = await ctx.extensions.call(
-                "wp-site-connector", "list_posts_full", site_id=params.site_id, limit=500,
+                "wp-site-connector", "list_posts_full", site_id=wp_site_id, limit=500,
             )
         except Exception:
             raw_posts = []

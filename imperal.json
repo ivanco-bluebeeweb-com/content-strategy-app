@@ -3108,6 +3108,269 @@
       "owner_chat_tool": "content-strategy-app"
     },
     {
+      "name": "refresh_brief_visual_guidance",
+      "description": "Refresh an existing article brief with the current approved visual guidance from its Site Profile. Copies read-only guidance only; it does not create a media package or generate images.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "update:article_brief"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "brief_id": {
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
+            "title": "Brief Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brief_id"
+        ],
+        "title": "RefreshBriefVisualGuidanceParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Structured brief handed downstream to article writing / image planning.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body",
+            "x-sdl-role": "content.body"
+          },
+          "body_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "md",
+                  "html",
+                  "plain",
+                  "rich"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body Format",
+            "x-sdl-role": "content.body_format"
+          },
+          "raw_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Body",
+            "x-sdl-role": "content.raw_body"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "default": "brief_ready",
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "opportunity_id": {
+            "default": "",
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "working_title": {
+            "default": "",
+            "title": "Working Title",
+            "type": "string"
+          },
+          "target_language": {
+            "default": "",
+            "title": "Target Language",
+            "type": "string"
+          },
+          "target_audience": {
+            "default": "",
+            "title": "Target Audience",
+            "type": "string"
+          },
+          "search_intent": {
+            "default": "",
+            "title": "Search Intent",
+            "type": "string"
+          },
+          "primary_query": {
+            "default": "",
+            "title": "Primary Query",
+            "type": "string"
+          },
+          "secondary_queries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Secondary Queries",
+            "type": "array"
+          },
+          "outline": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Outline",
+            "type": "array"
+          },
+          "cta_goal": {
+            "default": "",
+            "title": "Cta Goal",
+            "type": "string"
+          },
+          "internal_link_targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Internal Link Targets",
+            "type": "array"
+          },
+          "differentiation_notes": {
+            "default": "",
+            "title": "Differentiation Notes",
+            "type": "string"
+          },
+          "image_requirements": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Image Requirements",
+            "type": "array"
+          },
+          "approved_visual_guidance": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Approved Visual Guidance",
+            "type": "object"
+          },
+          "key_action_page_url": {
+            "default": "",
+            "title": "Key Action Page Url",
+            "type": "string"
+          },
+          "key_action_page_language": {
+            "default": "",
+            "title": "Key Action Page Language",
+            "type": "string"
+          },
+          "key_action_page_reason": {
+            "default": "",
+            "title": "Key Action Page Reason",
+            "type": "string"
+          },
+          "external_link_url": {
+            "default": "",
+            "title": "External Link Url",
+            "type": "string"
+          },
+          "external_link_language": {
+            "default": "",
+            "title": "External Link Language",
+            "type": "string"
+          },
+          "external_link_language_priority": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "External Link Language Priority",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ArticleBrief",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "content-strategy-app.refresh_brief_visual_guidance",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
       "name": "build_media_brief_handoff",
       "description": "Build a read-only Media Studio create_media_brief payload from an article brief and its approved visual guidance. It does not create a media package or generate images.",
       "action_type": "read",

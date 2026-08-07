@@ -119,6 +119,7 @@ def to_brief(d) -> ArticleBrief:
         internal_link_targets=data.get("internal_link_targets", []),
         differentiation_notes=data.get("differentiation_notes", ""),
         image_requirements=data.get("image_requirements", []),
+        approved_visual_guidance=data.get("approved_visual_guidance", {}),
         key_action_page_url=data.get("key_action_page_url", ""),
         key_action_page_language=data.get("key_action_page_language", ""),
         key_action_page_reason=data.get("key_action_page_reason", ""),

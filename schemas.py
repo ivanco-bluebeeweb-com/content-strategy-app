@@ -304,6 +304,10 @@ class BuildMediaBriefHandoffParams(BaseModel):
     brief_id: str = Field(description="UUID of an existing article brief — from list_briefs, never invented")
 
 
+class RefreshBriefVisualGuidanceParams(BaseModel):
+    brief_id: str = Field(description="UUID of an existing article brief — from list_briefs, never invented")
+
+
 class WriterBrief(sdl.Entity, sdl.Bodied):
     """Everything Article Writer needs to create_project/create_article/generate_article
     for this brief, assembled in the exact shape that app's tools expect. There is no

@@ -458,7 +458,8 @@ async def test_brief_panel_hides_media_handoff_for_stale_visual_guidance():
     rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
     assert "Media Studio handoff unavailable" in rendered
     assert "stale approved visual baseline" in rendered
-    assert "Rebuild the brief from the current Site Profile first" in rendered
+    assert "Refresh approved visual guidance" in rendered
+    assert "refresh_brief_visual_guidance" in rendered
     assert "Build Media Studio handoff" not in rendered
 
 
@@ -523,6 +524,44 @@ async def test_media_brief_handoff_rejects_stale_visual_guidance_basis():
     assert result.status == "error"
     assert "stale" in repr(result)
     assert "Rebuild the brief" in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_refresh_brief_visual_guidance_unblocks_media_handoff():
+    from schemas import (
+        BuildMediaBriefHandoffParams,
+        RefreshBriefVisualGuidanceParams,
+        UpdateSiteProfileParams,
+    )
+    ctx = MockContext()
+    _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    stale_guidance = _approved_visual_guidance()
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=stale_guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": stale_guidance})
+
+    current_guidance = _approved_visual_guidance()
+    current_guidance["profile_revision"] = 3
+    current_guidance["snapshot_hash"] = "sha256:new-approved-basis"
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=current_guidance)
+    )
+
+    refreshed = await m.refresh_brief_visual_guidance(
+        ctx, RefreshBriefVisualGuidanceParams(brief_id=brief_id)
+    )
+    assert refreshed.status == "success"
+    assert refreshed.data.approved_visual_guidance["profile_revision"] == 3
+    assert refreshed.data.approved_visual_guidance["snapshot_hash"] == "sha256:new-approved-basis"
+
+    handoff = await m.build_media_brief_handoff(
+        ctx, BuildMediaBriefHandoffParams(brief_id=brief_id)
+    )
+    assert handoff.status == "success"
+    assert handoff.data.approved_visual_profile_revision == 3
+    assert handoff.data.approved_snapshot_hash == "sha256:new-approved-basis"
 
 
 @pytest.mark.asyncio

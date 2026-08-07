@@ -23,6 +23,7 @@ from imperal_sdk import ActionResult, Extension, ChatExtension, ui
 
 from schemas import (
     BuildContentCalendarParams, BuildMediaBriefHandoffParams, BuildWriterBriefParams, CreateBriefParams,
+    RefreshBriefVisualGuidanceParams,
     CreateSiteProfileParams, DiscoverOpportunitiesParams,
     GetContentCalendarParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
@@ -1179,6 +1180,46 @@ async def link_external_article(ctx, params: LinkExternalArticleParams) -> Actio
 
 
 @chat.function(
+    "refresh_brief_visual_guidance",
+    description=(
+        "Refresh an existing article brief with the current approved visual guidance from its Site Profile. "
+        "Copies read-only guidance only; it does not create a media package or generate images."
+    ),
+    action_type="write",
+    effects=["update:article_brief"],
+    event="content-strategy-app.refresh_brief_visual_guidance",
+    data_model=ArticleBrief,
+)
+async def refresh_brief_visual_guidance(ctx, params: RefreshBriefVisualGuidanceParams) -> ActionResult[ArticleBrief]:
+    """Copy the current approved Site Profile baseline into one existing brief."""
+    brief_doc = await ctx.store.get("article_briefs", params.brief_id)
+    if not brief_doc:
+        return ActionResult.error(f"Brief '{params.brief_id}' not found.", retryable=False)
+    profile_page = await ctx.store.query(
+        "site_profiles", where={"site_id": brief_doc.data.get("site_id", "")}, limit=1
+    )
+    if not profile_page.data:
+        return ActionResult.error("Site Profile for this brief was not found.", retryable=False)
+    try:
+        guidance = _normalize_approved_visual_guidance(
+            profile_page.data[0].data.get("approved_visual_guidance", {})
+        )
+    except (TypeError, ValueError) as exc:
+        return ActionResult.error(str(exc), retryable=False)
+    if not guidance:
+        return ActionResult.error(
+            "Site Profile has no approved visual guidance to refresh from.", retryable=False
+        )
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+    brief_doc.data["approved_visual_guidance"] = guidance
+    return ActionResult.success(
+        _to_brief(brief_doc),
+        summary="Brief visual guidance refreshed from the current approved Site Profile baseline.",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
     "build_media_brief_handoff",
     description=(
         "Build a read-only Media Studio create_media_brief payload from an article brief and its approved visual guidance. "
@@ -1778,9 +1819,14 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
                     children=[],
                 )
                 if handoff_available
-                else ui.Text(
-                    "Media Studio handoff unavailable: this brief uses a stale approved visual baseline. Rebuild the brief from the current Site Profile first.",
-                    variant="caption",
+                else ui.Form(
+                    action="refresh_brief_visual_guidance",
+                    submit_label="Refresh approved visual guidance",
+                    defaults={"brief_id": q.get("brief_id", "")},
+                    children=[ui.Text(
+                        "Media Studio handoff unavailable: this brief uses a stale approved visual baseline. Refresh the read-only guidance from the current Site Profile first.",
+                        variant="caption",
+                    )],
                 )
             )
             image_children += [

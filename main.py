@@ -1356,7 +1356,12 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
         f"- Resolved key action page: {brief.get('key_action_page_url', '')} ({brief.get('key_action_page_reason', '')})",
     ]
     visual_guidance = brief.get("approved_visual_guidance", {})
-    if visual_guidance:
+    current_guidance = profile.get("approved_visual_guidance", {})
+    basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
+    visual_guidance_is_current = visual_guidance and current_guidance and all(
+        visual_guidance.get(field) == current_guidance.get(field) for field in basis_fields
+    )
+    if visual_guidance_is_current:
         body_lines += [
             "",
             "## Approved visual guidance (non-generative)",
@@ -1364,6 +1369,12 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
             f"- Style direction: {visual_guidance.get('style_direction', '')}",
             f"- Prohibited patterns: {', '.join(visual_guidance.get('prohibited_patterns', [])) or 'None recorded'}",
             "- Do not generate media from this brief. If handed to Media Studio later, use third-party providers first; Magnific only after other providers technically fail.",
+        ]
+    elif visual_guidance:
+        body_lines += [
+            "",
+            "## Visual guidance status",
+            "- The brief's approved visual baseline is stale and was intentionally omitted. Refresh the brief from the current Site Profile before passing visual guidance downstream.",
         ]
 
     payload = WriterBrief(
@@ -1389,7 +1400,7 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
         external_link_language=brief.get("external_link_language", ""),
         external_link_language_priority=brief.get("external_link_language_priority", []),
         differentiation_notes=brief.get("differentiation_notes", ""),
-        approved_visual_guidance=visual_guidance,
+        approved_visual_guidance=visual_guidance if visual_guidance_is_current else {},
     )
     return ActionResult.success(payload, summary=f"Writer brief assembled for '{payload.working_title}'.")
 

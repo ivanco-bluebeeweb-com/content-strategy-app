@@ -393,6 +393,26 @@ async def test_approved_visual_guidance_flows_from_site_profile_to_writer_brief_
 
 
 @pytest.mark.asyncio
+async def test_brief_panel_exposes_read_only_media_handoff_for_approved_visual_guidance():
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    guidance = {
+        "profile_id": "approved-profile-1",
+        "visual_intent": "Grounded operational confidence",
+        "style_direction": "Documentary realism",
+    }
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+
+    rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
+    assert "Approved visual guidance is attached" in rendered
+    assert "Build Media Studio handoff" in rendered
+    assert "build_media_brief_handoff" in rendered
+    assert "Third-party first; Magnific only after technical failure" in rendered
+    assert "does not generate images" in rendered
+
+
+@pytest.mark.asyncio
 async def test_media_brief_handoff_preserves_approved_guidance_without_creating_media():
     from schemas import BuildMediaBriefHandoffParams, BuildWriterBriefParams, UpdateSiteProfileParams
     ctx = MockContext()

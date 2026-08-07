@@ -1698,11 +1698,34 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
                 content=ui.Markdown(content=_outline_markdown(brief.get("outline", []))),
             )
         )
+        visual_guidance = brief.get("approved_visual_guidance", {})
+        image_children = [
+            ui.Markdown(content=_image_reqs_markdown(brief.get("image_requirements", []))),
+        ]
+        if visual_guidance:
+            image_children += [
+                ui.Text("Approved visual guidance is attached · read-only", variant="caption"),
+                ui.KeyValue(columns=1, items=[
+                    {"key": "Visual intent", "value": visual_guidance.get("visual_intent", "—")},
+                    {"key": "Style direction", "value": visual_guidance.get("style_direction", "—")},
+                    {"key": "Provider policy", "value": "Third-party first; Magnific only after technical failure"},
+                ]),
+                ui.Form(
+                    action="build_media_brief_handoff",
+                    submit_label="Build Media Studio handoff",
+                    defaults={"brief_id": q.get("brief_id", "")},
+                    children=[],
+                ),
+                ui.Text(
+                    "This creates no media package and does not generate images.",
+                    variant="caption",
+                ),
+            ]
         sections.append(
             ui.Card(
                 title="Image requirements",
-                subtitle="Handed off to the Image / Media app",
-                content=ui.Markdown(content=_image_reqs_markdown(brief.get("image_requirements", []))),
+                subtitle="Read-only downstream guidance; no media is generated here",
+                content=ui.Stack(direction="v", gap=2, children=image_children),
             )
         )
         cta = brief.get("cta_goal", "")

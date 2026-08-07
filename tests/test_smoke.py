@@ -563,6 +563,11 @@ async def test_refresh_brief_visual_guidance_unblocks_media_handoff():
     assert handoff.data.approved_visual_profile_revision == 3
     assert handoff.data.approved_snapshot_hash == "sha256:new-approved-basis"
 
+    rendered = repr(await m.brief_panel(ctx, queue_item_id=_queue_item_id))
+    assert "Build Media Studio handoff" in rendered
+    assert "refresh_brief_visual_guidance" not in rendered
+    assert "does not generate images" in rendered
+
 
 @pytest.mark.asyncio
 async def test_build_writer_brief_missing_brief_errors():

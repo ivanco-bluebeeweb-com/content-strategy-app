@@ -1094,7 +1094,7 @@ async def build_content_calendar(ctx, params: BuildContentCalendarParams) -> Act
                 week_counts[week_no] = week_counts.get(week_no, 0) + 1
                 await ctx.store.update("queue_items", doc.id, {"scheduled_date": d.isoformat()})
                 doc.data["scheduled_date"] = d.isoformat()
-                scheduled.append(_to_calendar_entry(doc))
+                scheduled.append(await _calendar_entry_with_visual_baseline(ctx, doc))
                 slot_idx += 1
                 placed = True
                 break

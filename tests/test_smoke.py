@@ -101,7 +101,7 @@ async def test_queue_panel_labels_current_and_stale_approved_visual_baselines():
 
 @pytest.mark.asyncio
 async def test_content_calendar_reports_current_and_stale_visual_baseline_without_guidance_payload():
-    from schemas import GetContentCalendarParams, UpdateSiteProfileParams
+    from schemas import BuildContentCalendarParams, GetContentCalendarParams, UpdateSiteProfileParams
     ctx = MockContext()
     _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
     guidance = _approved_visual_guidance()
@@ -117,6 +117,14 @@ async def test_content_calendar_reports_current_and_stale_visual_baseline_withou
     assert current.status == "success"
     assert current.data.items[0].visual_baseline_state == "current"
     assert not hasattr(current.data.items[0], "approved_visual_guidance")
+
+    await ctx.store.update("queue_items", queue_items.data[0].id, {"scheduled_date": ""})
+    built = await m.build_content_calendar(
+        ctx, BuildContentCalendarParams(site_id="g4s.md", year=2026, month=8, posts_per_week=1)
+    )
+    assert built.status == "success"
+    assert built.data.items[0].visual_baseline_state == "current"
+    assert not hasattr(built.data.items[0], "approved_visual_guidance")
 
     updated_guidance = _approved_visual_guidance()
     updated_guidance["profile_revision"] = 3

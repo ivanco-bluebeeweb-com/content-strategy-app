@@ -1764,6 +1764,25 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
             ui.Markdown(content=_image_reqs_markdown(brief.get("image_requirements", []))),
         ]
         if visual_guidance:
+            site_page = await ctx.store.query("site_profiles", where={"site_id": brief.get("site_id", "")}, limit=1)
+            current_guidance = site_page.data[0].data.get("approved_visual_guidance", {}) if site_page.data else {}
+            basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
+            handoff_available = bool(current_guidance) and all(
+                visual_guidance.get(field) == current_guidance.get(field) for field in basis_fields
+            )
+            handoff_control = (
+                ui.Form(
+                    action="build_media_brief_handoff",
+                    submit_label="Build Media Studio handoff",
+                    defaults={"brief_id": q.get("brief_id", "")},
+                    children=[],
+                )
+                if handoff_available
+                else ui.Text(
+                    "Media Studio handoff unavailable: this brief uses a stale approved visual baseline. Rebuild the brief from the current Site Profile first.",
+                    variant="caption",
+                )
+            )
             image_children += [
                 ui.Text("Approved visual guidance is attached · read-only", variant="caption"),
                 ui.KeyValue(columns=1, items=[
@@ -1773,12 +1792,7 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
                     {"key": "Approval basis", "value": f"Profile r{visual_guidance.get('profile_revision', '—')} · VBS r{visual_guidance.get('vbs_revision', '—')}"},
                     {"key": "Snapshot", "value": visual_guidance.get("snapshot_hash", "—")},
                 ]),
-                ui.Form(
-                    action="build_media_brief_handoff",
-                    submit_label="Build Media Studio handoff",
-                    defaults={"brief_id": q.get("brief_id", "")},
-                    children=[],
-                ),
+                handoff_control,
                 ui.Text(
                     "This creates no media package and does not generate images.",
                     variant="caption",

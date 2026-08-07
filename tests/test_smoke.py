@@ -415,9 +415,13 @@ async def test_site_profile_rejects_visual_guidance_without_approved_basis():
 
 @pytest.mark.asyncio
 async def test_brief_panel_exposes_read_only_media_handoff_for_approved_visual_guidance():
+    from schemas import UpdateSiteProfileParams
     ctx = MockContext()
     queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
     guidance = _approved_visual_guidance()
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
+    )
     brief_doc = await ctx.store.get("article_briefs", brief_id)
     await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
 
@@ -430,6 +434,32 @@ async def test_brief_panel_exposes_read_only_media_handoff_for_approved_visual_g
     assert "VBS r4" in rendered
     assert "sha256:approved-basis" in rendered
     assert "does not generate images" in rendered
+
+
+@pytest.mark.asyncio
+async def test_brief_panel_hides_media_handoff_for_stale_visual_guidance():
+    from schemas import UpdateSiteProfileParams
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    stale_guidance = _approved_visual_guidance()
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=stale_guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": stale_guidance})
+
+    current_guidance = _approved_visual_guidance()
+    current_guidance["profile_revision"] = 3
+    current_guidance["snapshot_hash"] = "sha256:new-approved-basis"
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=current_guidance)
+    )
+
+    rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
+    assert "Media Studio handoff unavailable" in rendered
+    assert "stale approved visual baseline" in rendered
+    assert "Rebuild the brief from the current Site Profile first" in rendered
+    assert "Build Media Studio handoff" not in rendered
 
 
 @pytest.mark.asyncio

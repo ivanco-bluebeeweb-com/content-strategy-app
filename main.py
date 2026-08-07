@@ -180,6 +180,33 @@ chat = ChatExtension(
 # Site profiles
 # ──────────────────────────────────────────────────────────────────────────
 
+def _normalize_approved_visual_guidance(guidance: dict[str, object]) -> dict[str, object]:
+    """Keep only the non-personal, approved Brand-handoff contract.
+
+    Content Strategy cannot independently verify Brand tenant ACL/audit records, so
+    it fail-closes on the handoff's immutable approval basis instead of storing an
+    arbitrary visual prompt or any personal/asset data.
+    """
+    if not guidance:
+        return {}
+    required = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
+    missing = [field for field in required if not guidance.get(field)]
+    if missing:
+        raise ValueError("Approved visual guidance is missing required approval basis: " + ", ".join(missing))
+    return {
+        "profile_id": str(guidance["profile_id"]),
+        "profile_revision": int(guidance["profile_revision"]),
+        "vbs_id": str(guidance["vbs_id"]),
+        "vbs_revision": int(guidance["vbs_revision"]),
+        "snapshot_hash": str(guidance["snapshot_hash"]),
+        "visual_intent": str(guidance.get("visual_intent", "")),
+        "style_direction": str(guidance.get("style_direction") or guidance.get("art_direction", "")),
+        "prohibited_patterns": list(guidance.get("prohibited_patterns", [])),
+        "provider_policy": "third_party_only_unless_technical_failure",
+        "generation_boundary": "No generation is performed by this handoff.",
+    }
+
+
 @chat.function(
     "create_site_profile",
     description=(
@@ -195,6 +222,10 @@ chat = ChatExtension(
 )
 async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionResult:
     """Register a new managed site profile (idempotent on site_id)."""
+    try:
+        approved_visual_guidance = _normalize_approved_visual_guidance(params.approved_visual_guidance)
+    except (TypeError, ValueError) as exc:
+        return ActionResult.error(str(exc), retryable=False)
     existing = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
     if existing.data:
         return ActionResult.error(
@@ -214,7 +245,7 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
             "cta_default": params.cta_default,
             "cta_default_i18n": params.cta_default_i18n,
             "external_sources_i18n": params.external_sources_i18n,
-            "approved_visual_guidance": params.approved_visual_guidance,
+            "approved_visual_guidance": approved_visual_guidance,
         },
     )
     return ActionResult.success(
@@ -258,6 +289,11 @@ async def update_site_profile(ctx, params: UpdateSiteProfileParams) -> ActionRes
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
+    if "approved_visual_guidance" in updates:
+        try:
+            updates["approved_visual_guidance"] = _normalize_approved_visual_guidance(updates["approved_visual_guidance"])
+        except (TypeError, ValueError) as exc:
+            return ActionResult.error(str(exc), retryable=False)
     if not updates:
         return ActionResult.error("No fields given to update.", retryable=False)
     updated = await ctx.store.update("site_profiles", doc_id, updates)

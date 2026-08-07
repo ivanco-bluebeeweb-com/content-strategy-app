@@ -57,11 +57,7 @@ async def test_sources_panel_shows_approved_visual_guidance_as_read_only_context
             site_id="visual.example",
             domain="visual.example",
             brand_name="Visual Site",
-            approved_visual_guidance={
-                "profile_id": "approved-profile-1",
-                "visual_intent": "Grounded operational confidence",
-                "style_direction": "Documentary realism",
-            },
+            approved_visual_guidance=_approved_visual_guidance(),
         ),
     )
 
@@ -358,19 +354,29 @@ async def test_build_writer_brief_assembles_article_writer_payload():
     assert payload.queue_item_id  # linked back to the originating queue item
 
 
+def _approved_visual_guidance():
+    return {
+        "profile_id": "approved-profile-1",
+        "profile_revision": 2,
+        "vbs_id": "vbs-1",
+        "vbs_revision": 4,
+        "snapshot_hash": "sha256:approved-basis",
+        "visual_intent": "Grounded operational confidence",
+        "style_direction": "Documentary realism",
+        "prohibited_patterns": ["Synthetic likenesses"],
+        "provider_policy": "third_party_only_unless_technical_failure",
+        "generation_boundary": "No generation is performed by this handoff.",
+    }
+
+
 @pytest.mark.asyncio
 async def test_approved_visual_guidance_flows_from_site_profile_to_writer_brief_without_media_generation():
     from schemas import BuildWriterBriefParams, UpdateSiteProfileParams
     ctx = MockContext()
     _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
-    guidance = {
-        "profile_id": "approved-profile-1",
-        "visual_intent": "Grounded operational confidence",
-        "style_direction": "Documentary realism; show real working environments",
-        "prohibited_patterns": ["Synthetic likenesses", "Faces used as identity claims"],
-        "provider_policy": "third_party_only_unless_technical_failure",
-        "generation_boundary": "No generation is performed by this handoff.",
-    }
+    guidance = _approved_visual_guidance()
+    guidance["style_direction"] = "Documentary realism; show real working environments"
+    guidance["prohibited_patterns"] = ["Synthetic likenesses", "Faces used as identity claims"]
 
     updated = await m.update_site_profile(
         ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
@@ -393,14 +399,25 @@ async def test_approved_visual_guidance_flows_from_site_profile_to_writer_brief_
 
 
 @pytest.mark.asyncio
+async def test_site_profile_rejects_visual_guidance_without_approved_basis():
+    ctx = MockContext()
+    result = await m.create_site_profile(
+        ctx,
+        CreateSiteProfileParams(
+            site_id="unsafe.example",
+            domain="unsafe.example",
+            approved_visual_guidance={"profile_id": "unverified", "visual_intent": "Arbitrary prompt"},
+        ),
+    )
+    assert result.status == "error"
+    assert "approval basis" in repr(result)
+
+
+@pytest.mark.asyncio
 async def test_brief_panel_exposes_read_only_media_handoff_for_approved_visual_guidance():
     ctx = MockContext()
     queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
-    guidance = {
-        "profile_id": "approved-profile-1",
-        "visual_intent": "Grounded operational confidence",
-        "style_direction": "Documentary realism",
-    }
+    guidance = _approved_visual_guidance()
     brief_doc = await ctx.store.get("article_briefs", brief_id)
     await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
 
@@ -417,12 +434,7 @@ async def test_media_brief_handoff_preserves_approved_guidance_without_creating_
     from schemas import BuildMediaBriefHandoffParams, BuildWriterBriefParams, UpdateSiteProfileParams
     ctx = MockContext()
     _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
-    guidance = {
-        "profile_id": "approved-profile-1",
-        "visual_intent": "Grounded operational confidence",
-        "style_direction": "Documentary realism",
-        "prohibited_patterns": ["Synthetic likenesses"],
-    }
+    guidance = _approved_visual_guidance()
     await m.update_site_profile(
         ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
     )

@@ -22,6 +22,27 @@ No image generation, media-package creation, or asset upload belongs to the curr
 
 ## Current baseline — already built and pushed
 
+### VBS source baseline — code-verified
+
+**Brand Strategy Hub** is the source of truth for an approved Visual Brand System (VBS) and Visual Profile. It has already delivered the following, with **96 automated tests passing** on 2026-08-07:
+
+1. Private, tenant-local VBS workspace with explicit owner claim.
+2. VBS revisions plus evidence registration and human evidence review (`reviewed_valid`, hypothesis, rejected, archived).
+3. Role-based access: owner, editor, reviewer, viewer; legacy access migration requires owner action.
+4. Immutable approval evidence snapshots, approval-basis verification, and fail-closed integrity gates.
+5. Auditable Visual Profile drafts and human approval bound to an approved VBS and its reviewed evidence basis.
+6. Read-only, non-personal downstream handoffs for Content Strategy and Media guidance.
+7. Brand Strategy panel states for VBS, evidence, profile approval, integrity pause, and approved handoffs.
+
+**Latest VBS commits:**
+
+- `821691d` — expose approved visual handoffs in Brand Strategy UI
+- `2299448` — add read-only approved Visual Profile → Media guidance handoff
+- `f1b07e6` — add read-only approved Visual Profile → Content Strategy handoff
+- `e95b988` — complete Visual Profile approval UI
+
+**Important distinction:** this baseline is verified in code and tests. It is **not yet counted as live-product proof** until its panel workflow is exercised successfully with a representative brand by a user.
+
 ### What works in code
 
 The approved Visual Profile / VBS baseline travels safely through:

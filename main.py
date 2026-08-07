@@ -22,12 +22,12 @@ from datetime import date as _date
 from imperal_sdk import ActionResult, Extension, ChatExtension, ui
 
 from schemas import (
-    BuildContentCalendarParams, BuildWriterBriefParams, CreateBriefParams,
+    BuildContentCalendarParams, BuildMediaBriefHandoffParams, BuildWriterBriefParams, CreateBriefParams,
     CreateSiteProfileParams, DiscoverOpportunitiesParams,
     GetContentCalendarParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams, UpdateSiteProfileParams,
-    ArticleBrief, ArticleBriefList,
+    ArticleBrief, ArticleBriefList, MediaBriefHandoff,
     ContentCalendarEntry, ContentCalendarEntryList,
     Opportunity, OpportunityList,
     QueueItem, QueueItemList,
@@ -1140,6 +1140,49 @@ async def link_external_article(ctx, params: LinkExternalArticleParams) -> Actio
         summary="Linked to Article Writer.",
         refresh_panels=["queue"],
     )
+
+
+@chat.function(
+    "build_media_brief_handoff",
+    description=(
+        "Build a read-only Media Studio create_media_brief payload from an article brief and its approved visual guidance. "
+        "It does not create a media package or generate images."
+    ),
+    action_type="read",
+    data_model=MediaBriefHandoff,
+)
+async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -> ActionResult[MediaBriefHandoff]:
+    """Assemble a safe, non-generative Media Studio draft-brief payload."""
+    brief_doc = await ctx.store.get("article_briefs", params.brief_id)
+    if not brief_doc:
+        return ActionResult.error(f"Brief '{params.brief_id}' not found.", retryable=False)
+    brief = brief_doc.data
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": brief.get("site_id", "")}, limit=1)
+    site = profile_page.data[0].data if profile_page.data else {}
+    guidance = brief.get("approved_visual_guidance", {})
+    prohibited = guidance.get("prohibited_patterns", [])
+    style_parts = [guidance.get("style_direction", "")]
+    if prohibited:
+        style_parts.append("Avoid: " + "; ".join(prohibited))
+    handoff = MediaBriefHandoff(
+        id=f"media-handoff-{brief_doc.id}",
+        title=f"Media brief handoff: {brief.get('working_title', '')}",
+        site=site.get("domain") or brief.get("site_id", ""),
+        article_title=brief.get("working_title", ""),
+        native_title=brief.get("working_title", ""),
+        summary=(
+            f"Article topic: {brief.get('primary_query', '')}. "
+            f"Audience: {brief.get('target_audience', '')}. "
+            f"Approved visual intent: {guidance.get('visual_intent', '')}."
+        ).strip(),
+        lang=brief.get("target_language", ""),
+        inline_count=len(brief.get("image_requirements", [])) - 1 if brief.get("image_requirements") else 2,
+        model="auto",
+        style_direction=" ".join(part for part in style_parts if part),
+        source_brief_id=brief_doc.id,
+        approved_visual_profile_id=guidance.get("profile_id", ""),
+    )
+    return ActionResult.success(handoff, "Read-only Media Studio draft-brief payload is ready; no media package or assets were created.")
 
 
 @chat.function(

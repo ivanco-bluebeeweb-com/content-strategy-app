@@ -3108,6 +3108,173 @@
       "owner_chat_tool": "content-strategy-app"
     },
     {
+      "name": "build_media_brief_handoff",
+      "description": "Build a read-only Media Studio create_media_brief payload from an article brief and its approved visual guidance. It does not create a media package or generate images.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "brief_id": {
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
+            "title": "Brief Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brief_id"
+        ],
+        "title": "BuildMediaBriefHandoffParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Read-only payload for Media Studio's create_media_brief; never generates assets.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site": {
+            "default": "",
+            "title": "Site",
+            "type": "string"
+          },
+          "article_title": {
+            "default": "",
+            "title": "Article Title",
+            "type": "string"
+          },
+          "native_title": {
+            "default": "",
+            "title": "Native Title",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "lang": {
+            "default": "",
+            "title": "Lang",
+            "type": "string"
+          },
+          "inline_count": {
+            "default": 2,
+            "title": "Inline Count",
+            "type": "integer"
+          },
+          "model": {
+            "default": "auto",
+            "title": "Model",
+            "type": "string"
+          },
+          "style_direction": {
+            "default": "",
+            "title": "Style Direction",
+            "type": "string"
+          },
+          "provider_policy": {
+            "default": "third_party_only_unless_technical_failure",
+            "title": "Provider Policy",
+            "type": "string"
+          },
+          "generation_boundary": {
+            "default": "This handoff does not create a media package or generate assets.",
+            "title": "Generation Boundary",
+            "type": "string"
+          },
+          "source_brief_id": {
+            "default": "",
+            "title": "Source Brief Id",
+            "type": "string"
+          },
+          "approved_visual_profile_id": {
+            "default": "",
+            "title": "Approved Visual Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "MediaBriefHandoff",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
       "name": "build_writer_brief",
       "description": "Assemble an existing article brief into the exact shape Article Writer (imperal-article-writer-extension) needs for create_project/create_article/generate_article — title, keyword, outline, audience, CTA. Pass the returned fields straight into that app's tools; there is no direct extension-to-extension call, so Webbee relays this data in the same chat turn.",
       "action_type": "read",

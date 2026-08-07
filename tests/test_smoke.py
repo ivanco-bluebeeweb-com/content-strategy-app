@@ -393,6 +393,42 @@ async def test_approved_visual_guidance_flows_from_site_profile_to_writer_brief_
 
 
 @pytest.mark.asyncio
+async def test_media_brief_handoff_preserves_approved_guidance_without_creating_media():
+    from schemas import BuildMediaBriefHandoffParams, BuildWriterBriefParams, UpdateSiteProfileParams
+    ctx = MockContext()
+    _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    guidance = {
+        "profile_id": "approved-profile-1",
+        "visual_intent": "Grounded operational confidence",
+        "style_direction": "Documentary realism",
+        "prohibited_patterns": ["Synthetic likenesses"],
+    }
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+
+    result = await m.build_media_brief_handoff(
+        ctx, BuildMediaBriefHandoffParams(brief_id=brief_id)
+    )
+    assert result.status == "success"
+    payload = result.data
+    assert payload.source_brief_id == brief_id
+    assert payload.approved_visual_profile_id == "approved-profile-1"
+    assert payload.model == "auto"
+    assert payload.provider_policy == "third_party_only_unless_technical_failure"
+    assert "Documentary realism" in payload.style_direction
+    assert "Avoid: Synthetic likenesses" in payload.style_direction
+    assert "does not create a media package or generate assets" in payload.generation_boundary
+
+    missing = await m.build_media_brief_handoff(
+        ctx, BuildMediaBriefHandoffParams(brief_id="missing-brief")
+    )
+    assert missing.status == "error"
+
+
+@pytest.mark.asyncio
 async def test_build_writer_brief_missing_brief_errors():
     from schemas import BuildWriterBriefParams
     ctx = MockContext()

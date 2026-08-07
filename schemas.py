@@ -280,6 +280,26 @@ class BuildWriterBriefParams(BaseModel):
     brief_id: str = Field(description="UUID of an existing article brief — from list_briefs, never invented")
 
 
+class MediaBriefHandoff(sdl.Entity):
+    """Read-only payload for Media Studio's create_media_brief; never generates assets."""
+    site: str = ""
+    article_title: str = ""
+    native_title: str = ""
+    summary: str = ""
+    lang: str = ""
+    inline_count: int = 2
+    model: str = "auto"  # third-party provider default; Magnific is technical-failure fallback only
+    style_direction: str = ""
+    provider_policy: str = "third_party_only_unless_technical_failure"
+    generation_boundary: str = "This handoff does not create a media package or generate assets."
+    source_brief_id: str = ""
+    approved_visual_profile_id: str = ""
+
+
+class BuildMediaBriefHandoffParams(BaseModel):
+    brief_id: str = Field(description="UUID of an existing article brief — from list_briefs, never invented")
+
+
 class WriterBrief(sdl.Entity, sdl.Bodied):
     """Everything Article Writer needs to create_project/create_article/generate_article
     for this brief, assembled in the exact shape that app's tools expect. There is no

@@ -26,6 +26,7 @@ class SiteProfile(sdl.Entity):
     content_categories: list[str] = []
     cta_default: str = ""
     cta_default_i18n: dict[str, str] = {}  # optional per-language override for cta_default
+    external_sources_i18n: dict[str, list[str]] = {}  # verified source URLs, keyed by source language
 
 
 class SiteProfileList(sdl.EntityList[SiteProfile]):
@@ -46,6 +47,7 @@ class UpdateSiteProfileParams(BaseModel):
     content_categories: list[str] | None = Field(default=None, description="Replace content categories/topics; omit to keep")
     cta_default: str | None = Field(default=None, description="New default CTA; omit to keep")
     cta_default_i18n: dict[str, str] | None = Field(default=None, description="Replace per-language CTA overrides; omit to keep")
+    external_sources_i18n: dict[str, list[str]] | None = Field(default=None, description="Replace verified external source URLs keyed by source language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}; omit to keep")
 
 
 class Opportunity(sdl.Entity):
@@ -102,6 +104,12 @@ class ArticleBrief(sdl.Entity, sdl.Bodied):
     internal_link_targets: list[str] = []
     differentiation_notes: str = ""
     image_requirements: list[str] = []
+    key_action_page_url: str = ""
+    key_action_page_language: str = ""
+    key_action_page_reason: str = ""
+    external_link_url: str = ""
+    external_link_language: str = ""
+    external_link_language_priority: list[str] = []
     status: str = "brief_ready"
 
 
@@ -204,6 +212,7 @@ class CreateSiteProfileParams(BaseModel):
     content_categories: list[str] = Field(default_factory=list, description="Content categories/topics this site covers")
     cta_default: str = Field("", description="Default call-to-action goal for articles on this site")
     cta_default_i18n: dict[str, str] = Field(default_factory=dict, description="Optional per-language override of cta_default, e.g. {'ru': '...', 'ro': '...'}")
+    external_sources_i18n: dict[str, list[str]] = Field(default_factory=dict, description="Verified authoritative external source URLs keyed by their content language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}. The pipeline selects the article language first, then this site's configured language-priority fallback.")
 
 
 class ListSiteProfilesParams(BaseModel):
@@ -286,6 +295,12 @@ class WriterBrief(sdl.Entity, sdl.Bodied):
     outline: list[str] = []
     cta_goal: str = ""
     internal_link_targets: list[str] = []
+    key_action_page_url: str = ""
+    key_action_page_language: str = ""
+    key_action_page_reason: str = ""
+    external_link_url: str = ""
+    external_link_language: str = ""
+    external_link_language_priority: list[str] = []
     differentiation_notes: str = ""
 
 

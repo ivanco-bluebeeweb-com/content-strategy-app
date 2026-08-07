@@ -20,11 +20,32 @@ from schemas import (
 
 
 async def _seed_audit(ctx, site_id: str) -> None:
-    """Satisfy discover_opportunities' mandatory content-audit gate in tests
-    that aren't specifically about the gate itself -- a real caller would run
-    run_content_audit, but that needs a live WP Site Connector IPC call which
-    these older tests don't set up."""
+    """Seed an already-audited, link-policy-ready site for unrelated tests."""
     await ctx.store.create("content_audits", {"site_id": site_id, "audited_at": "test-seed"})
+    await _configure_required_link_inputs(ctx, site_id=site_id)
+
+
+def _mock_action_pages(pages):
+    async def handler(**kwargs):
+        return pages
+    return handler
+
+
+async def _configure_required_link_inputs(ctx, *, site_id="g4s.md", language="en"):
+    """A valid test site has factual action pages and verified sources.
+
+    Tests must configure both, because production refuses to invent either URL.
+    """
+    profiles = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)
+    languages = list(profiles.data[0].data.get("target_languages") or [language]) if profiles.data else [language]
+    ctx.extensions.register("wp-site-connector", "list_pages_full", _mock_action_pages([
+        {"title": "Contact us", "slug": f"contact-{lang}", "link": f"https://{site_id}/{lang}/contact", "content": "", "lang": lang}
+        for lang in languages
+    ]))
+    if profiles.data:
+        await ctx.store.update("site_profiles", profiles.data[0].id, {
+            "external_sources_i18n": {lang: [f"https://sources.example/{lang}"] for lang in languages},
+        })
 
 
 @pytest.mark.asyncio
@@ -697,3 +718,46 @@ async def test_sources_panel_shows_never_audited_warning():
     node = await m.sources_panel(ctx)
     rendered = repr(node)
     assert "Never run" in rendered
+
+
+@pytest.mark.asyncio
+async def test_create_brief_requires_real_action_page_and_verified_external_source():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md", queries=[QuerySignal(query="security services", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    ctx.extensions.register("wp-site-connector", "list_pages_full", _mock_action_pages([]))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "error"
+    assert "KEY_ACTION_PAGE_REQUIRED" in result.error
+
+
+@pytest.mark.asyncio
+async def test_create_brief_selects_article_language_external_source_then_fallback():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="climtec.md", domain="climtec.md", target_languages=["ru", "ro"],
+        external_sources_i18n={"ro": ["https://source.example/ro"]},
+    ))
+    await _seed_audit(ctx, "climtec.md")
+    ctx.extensions.register("wp-site-connector", "list_pages_full", _mock_action_pages([
+        {"title": "Контакты", "slug": "contact-ru", "link": "https://climtec.md/ru/contact", "content": "", "lang": "ru"},
+        {"title": "Contact", "slug": "contact", "link": "https://climtec.md/contact", "content": "", "lang": "ro"},
+    ]))
+    profiles = await ctx.store.query("site_profiles", where={"site_id": "climtec.md"}, limit=1)
+    await ctx.store.update("site_profiles", profiles.data[0].id, {
+        "external_sources_i18n": {"ro": ["https://source.example/ro"]},
+    })
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md", queries=[QuerySignal(query="рекуперация тепла", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(
+        opportunity_id=discovered.data.items[0].id, target_language="ru",
+    ))
+    assert result.status == "success"
+    assert result.data.key_action_page_url == "https://climtec.md/ru/contact"
+    assert result.data.external_link_url == "https://source.example/ro"
+    assert result.data.external_link_language == "ro"
+    assert result.data.external_link_language_priority == ["ru", "ro"]

@@ -41,6 +41,7 @@ from schemas import (
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
     PurgePipelineDataParams, PurgeResult,
 )
+from link_policy import language_priority, resolve_external_source, resolve_key_action_page
 from converters import (
     guess_intent, cluster_label, priority_score,
     detect_language_fallback as _detect_language_fallback,
@@ -212,6 +213,7 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
             "content_categories": params.content_categories,
             "cta_default": params.cta_default,
             "cta_default_i18n": params.cta_default_i18n,
+            "external_sources_i18n": params.external_sources_i18n,
         },
     )
     return ActionResult.success(
@@ -251,7 +253,7 @@ async def update_site_profile(ctx, params: UpdateSiteProfileParams) -> ActionRes
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
-    for field in ("business_description_i18n", "target_languages", "content_categories", "cta_default_i18n"):
+    for field in ("business_description_i18n", "target_languages", "content_categories", "cta_default_i18n", "external_sources_i18n"):
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
@@ -774,9 +776,47 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
     opp = opp_doc.data
     profile_page = await ctx.store.query("site_profiles", where={"site_id": opp.get("site_id", "")}, limit=1)
     profile = profile_page.data[0].data if profile_page.data else {}
+    if not profile:
+        return ActionResult.error(
+            f"Site profile for '{opp.get('site_id', '')}' is missing. Create or restore it before creating a brief.",
+            retryable=False,
+        )
 
     target_language = params.target_language or (profile.get("target_languages") or ["en"])[0]
     lang_key = target_language.lower()[:2]
+    site_languages = list(profile.get("target_languages") or [lang_key])
+
+    # Required pipeline link policy. Pages come fresh from WordPress Hub,
+    # source URLs come only from the verified per-site registry. Neither URL
+    # is invented; absence blocks the brief before Article Writer can draft.
+    wp_site_id = await _resolve_wp_site_id(ctx, opp.get("site_id", ""))
+    try:
+        action_pages = await ctx.extensions.call(
+            "wp-site-connector", "list_pages_full", site_id=wp_site_id, limit=500,
+        )
+    except Exception as exc:  # noqa: BLE001 -- a dependency failure must not silently bypass a quality gate
+        return ActionResult.error(
+            f"Cannot resolve a key action page for '{opp.get('site_id', '')}': WordPress Hub page inventory failed ({type(exc).__name__}: {exc}).",
+            retryable=True,
+        )
+    action_page, action_language_priority = resolve_key_action_page(
+        action_pages or [], lang_key, site_languages,
+    )
+    if not action_page:
+        return ActionResult.error(
+            "KEY_ACTION_PAGE_REQUIRED: no real published action page (contact, consultation, quote, request, order) was found for "
+            f"language priority {action_language_priority}. Add/publish the page in WordPress Hub, then create the brief again.",
+            retryable=False,
+        )
+    external_link_url, external_link_language, external_language_priority = resolve_external_source(
+        profile.get("external_sources_i18n", {}), lang_key, site_languages,
+    )
+    if not external_link_url:
+        return ActionResult.error(
+            "EXTERNAL_SOURCE_REQUIRED: no verified external source URL is configured for "
+            f"language priority {external_language_priority}. Add a source to site profile external_sources_i18n, then create the brief again.",
+            retryable=False,
+        )
 
     # one brief per (opportunity, language) — refuse a silent duplicate
     existing_briefs = await ctx.store.query("article_briefs", limit=500)
@@ -890,6 +930,12 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "outline": outline,
             "cta_goal": localized_cta,
             "internal_link_targets": internal_link_targets,
+            "key_action_page_url": action_page.get("link", ""),
+            "key_action_page_language": action_page.get("lang", "") or action_language_priority[0],
+            "key_action_page_reason": "Highest-ranked published action page resolved from title, slug and content using the article-language-first fallback order.",
+            "external_link_url": external_link_url,
+            "external_link_language": external_link_language,
+            "external_link_language_priority": external_language_priority,
             "differentiation_notes": "",
             "image_requirements": image_requirements,
             "status": "brief_ready",
@@ -1134,6 +1180,12 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
     ] + [f"- {line}" for line in brief.get("outline", [])] + [
         "",
         f"CTA goal: {brief.get('cta_goal', '')}",
+        "",
+        "## Mandatory link policy",
+        "- Include at least one natural internal link from the approved targets below.",
+        f"- Include this verified external source: {brief.get('external_link_url', '')} (source language: {brief.get('external_link_language', '')}; required priority: {brief.get('external_link_language_priority', [])}).",
+        "- End the article with a CTA that is a markdown link to the resolved key action page; use a natural, language-appropriate anchor that expresses the CTA goal.",
+        f"- Resolved key action page: {brief.get('key_action_page_url', '')} ({brief.get('key_action_page_reason', '')})",
     ]
 
     payload = WriterBrief(
@@ -1152,6 +1204,12 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
         outline=brief.get("outline", []),
         cta_goal=brief.get("cta_goal", ""),
         internal_link_targets=brief.get("internal_link_targets", []),
+        key_action_page_url=brief.get("key_action_page_url", ""),
+        key_action_page_language=brief.get("key_action_page_language", ""),
+        key_action_page_reason=brief.get("key_action_page_reason", ""),
+        external_link_url=brief.get("external_link_url", ""),
+        external_link_language=brief.get("external_link_language", ""),
+        external_link_language_priority=brief.get("external_link_language_priority", []),
         differentiation_notes=brief.get("differentiation_notes", ""),
     )
     return ActionResult.success(payload, summary=f"Writer brief assembled for '{payload.working_title}'.")

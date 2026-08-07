@@ -46,6 +46,14 @@
             "title": "Business Description",
             "type": "string"
           },
+          "business_description_i18n": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Optional per-language override of business_description, e.g. {'ru': '...', 'ro': '...'} — used by create_brief so target_audience is written in the brief's actual target_language instead of always falling back to business_description",
+            "title": "Business Description I18N",
+            "type": "object"
+          },
           "target_languages": {
             "description": "Target languages for content, e.g. ['ru','ro']",
             "items": {
@@ -67,6 +75,25 @@
             "description": "Default call-to-action goal for articles on this site",
             "title": "Cta Default",
             "type": "string"
+          },
+          "cta_default_i18n": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Optional per-language override of cta_default, e.g. {'ru': '...', 'ro': '...'}",
+            "title": "Cta Default I18N",
+            "type": "object"
+          },
+          "external_sources_i18n": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": "Verified authoritative external source URLs keyed by their content language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}. The pipeline selects the article language first, then this site's configured language-priority fallback.",
+            "title": "External Sources I18N",
+            "type": "object"
           }
         },
         "required": [
@@ -167,6 +194,14 @@
             "title": "Business Description",
             "type": "string"
           },
+          "business_description_i18n": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Business Description I18N",
+            "type": "object"
+          },
           "target_languages": {
             "default": [],
             "items": {
@@ -187,6 +222,25 @@
             "default": "",
             "title": "Cta Default",
             "type": "string"
+          },
+          "cta_default_i18n": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Cta Default I18N",
+            "type": "object"
+          },
+          "external_sources_i18n": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "External Sources I18N",
+            "type": "object"
           }
         },
         "required": [
@@ -198,6 +252,306 @@
         "x-sdl": "entity"
       },
       "event": "created",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "update_site_profile",
+      "description": "Update selected fields of an existing site profile -- domain, brand, business description (incl. per-language overrides), target languages, content categories, or default CTA (incl. per-language overrides). Only given fields change. Use this to refresh a profile after re-running Brand Strategy Hub's build_content_strategy_handoff -- create_site_profile refuses to run again once a site_id exists.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "update:site_profile"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Patch an existing site profile with only the given fields. Needed so\na re-run of build_content_strategy_handoff (Brand Strategy Hub) can\nactually refresh a site profile's content_categories/business_description\netc. -- create_site_profile refuses to run again once a site_id exists,\nand until this existed there was NO way to update one afterwards.",
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New brand name; omit to keep",
+            "title": "Brand Name"
+          },
+          "business_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New business description; omit to keep",
+            "title": "Business Description"
+          },
+          "business_description_i18n": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace per-language business_description overrides; omit to keep",
+            "title": "Business Description I18N"
+          },
+          "target_languages": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace target languages; omit to keep",
+            "title": "Target Languages"
+          },
+          "content_categories": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace content categories/topics; omit to keep",
+            "title": "Content Categories"
+          },
+          "cta_default": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "New default CTA; omit to keep",
+            "title": "Cta Default"
+          },
+          "cta_default_i18n": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace per-language CTA overrides; omit to keep",
+            "title": "Cta Default I18N"
+          },
+          "external_sources_i18n": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace verified external source URLs keyed by source language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}; omit to keep",
+            "title": "External Sources I18N"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "UpdateSiteProfileParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One managed site (e.g. g4s.md, climtec.md).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "domain": {
+            "default": "",
+            "title": "Domain",
+            "type": "string"
+          },
+          "brand_name": {
+            "default": "",
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "business_description": {
+            "default": "",
+            "title": "Business Description",
+            "type": "string"
+          },
+          "business_description_i18n": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Business Description I18N",
+            "type": "object"
+          },
+          "target_languages": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Languages",
+            "type": "array"
+          },
+          "content_categories": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Categories",
+            "type": "array"
+          },
+          "cta_default": {
+            "default": "",
+            "title": "Cta Default",
+            "type": "string"
+          },
+          "cta_default_i18n": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "default": {},
+            "title": "Cta Default I18N",
+            "type": "object"
+          },
+          "external_sources_i18n": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "External Sources I18N",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "SiteProfile",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "updated",
       "background": false,
       "long_running": false,
       "scopes": [],
@@ -315,6 +669,14 @@
                 "title": "Business Description",
                 "type": "string"
               },
+              "business_description_i18n": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "default": {},
+                "title": "Business Description I18N",
+                "type": "object"
+              },
               "target_languages": {
                 "default": [],
                 "items": {
@@ -335,6 +697,25 @@
                 "default": "",
                 "title": "Cta Default",
                 "type": "string"
+              },
+              "cta_default_i18n": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "default": {},
+                "title": "Cta Default I18N",
+                "type": "object"
+              },
+              "external_sources_i18n": {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "default": {},
+                "title": "External Sources I18N",
+                "type": "object"
               }
             },
             "required": [
@@ -753,6 +1134,538 @@
           "items"
         ],
         "title": "SiteCompetitorProfileList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "run_content_audit",
+      "description": "Deep audit of a site's EXISTING content -- MANDATORY before any new content strategy work for that site (discover_opportunities refuses to run without one). Pulls every live post from WordPress Hub (via inter-extension IPC, not chat), measures word count (flags thin content under 300 words), checks for a missing excerpt, extracts a cheap keyword signature per article, and cross-checks every pair for keyword cannibalization -- two+ articles competing for the same topic and splitting ranking signal instead of reinforcing one page. Always produces an explicit 'needs_doing' list, even when nothing is wrong, so the audit result is visible and actionable in the panel, never a silent pass.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:content_audit"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "RunContentAuditParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "total_posts": {
+            "default": 0,
+            "title": "Total Posts",
+            "type": "integer"
+          },
+          "posts_by_language": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Posts By Language",
+            "type": "object"
+          },
+          "thin_content_count": {
+            "default": 0,
+            "title": "Thin Content Count",
+            "type": "integer"
+          },
+          "thin_content_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Thin Content Urls",
+            "type": "array"
+          },
+          "missing_excerpt_count": {
+            "default": 0,
+            "title": "Missing Excerpt Count",
+            "type": "integer"
+          },
+          "cannibalization_pairs_found": {
+            "default": 0,
+            "title": "Cannibalization Pairs Found",
+            "type": "integer"
+          },
+          "covered_topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Covered Topics",
+            "type": "array"
+          },
+          "needs_doing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needs Doing",
+            "type": "array"
+          },
+          "audited_at": {
+            "default": "",
+            "title": "Audited At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ContentAuditReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "content_audit_completed",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "get_content_audit",
+      "description": "Read the most recent content audit for a site (run_content_audit's saved result).",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "GetContentAuditParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "total_posts": {
+            "default": 0,
+            "title": "Total Posts",
+            "type": "integer"
+          },
+          "posts_by_language": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Posts By Language",
+            "type": "object"
+          },
+          "thin_content_count": {
+            "default": 0,
+            "title": "Thin Content Count",
+            "type": "integer"
+          },
+          "thin_content_urls": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Thin Content Urls",
+            "type": "array"
+          },
+          "missing_excerpt_count": {
+            "default": 0,
+            "title": "Missing Excerpt Count",
+            "type": "integer"
+          },
+          "cannibalization_pairs_found": {
+            "default": 0,
+            "title": "Cannibalization Pairs Found",
+            "type": "integer"
+          },
+          "covered_topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Covered Topics",
+            "type": "array"
+          },
+          "needs_doing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needs Doing",
+            "type": "array"
+          },
+          "audited_at": {
+            "default": "",
+            "title": "Audited At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ContentAuditReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "check_keyword_cannibalization",
+      "description": "Check for keyword cannibalization among a site's existing articles -- optionally including one NEW candidate keyword/topic, so a duplicate topic is caught BEFORE a new article is written, not after it's published and already splitting ranking signal with an old one. Requires a content audit to already exist for the site.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "candidate_keyword": {
+            "default": "",
+            "description": "Optional: a NEW topic/keyword being considered for a fresh article — checked against existing content so a duplicate topic is caught BEFORE writing, not after. Empty = audit existing articles against each other only.",
+            "title": "Candidate Keyword",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "CheckCannibalizationParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "CannibalizationFinding": {
+            "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page.",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "shared_terms": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Shared Terms",
+                "type": "array"
+              },
+              "overlap_score": {
+                "default": 0.0,
+                "title": "Overlap Score",
+                "type": "number"
+              },
+              "urls": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Urls",
+                "type": "array"
+              },
+              "titles": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Titles",
+                "type": "array"
+              },
+              "recommendation": {
+                "default": "",
+                "title": "Recommendation",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "CannibalizationFinding",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/CannibalizationFinding"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CannibalizationFindingList",
         "type": "object",
         "x-sdl": "entity-list"
       },
@@ -1502,6 +2415,39 @@
               "type": "string"
             },
             "title": "Image Requirements",
+            "type": "array"
+          },
+          "key_action_page_url": {
+            "default": "",
+            "title": "Key Action Page Url",
+            "type": "string"
+          },
+          "key_action_page_language": {
+            "default": "",
+            "title": "Key Action Page Language",
+            "type": "string"
+          },
+          "key_action_page_reason": {
+            "default": "",
+            "title": "Key Action Page Reason",
+            "type": "string"
+          },
+          "external_link_url": {
+            "default": "",
+            "title": "External Link Url",
+            "type": "string"
+          },
+          "external_link_language": {
+            "default": "",
+            "title": "External Link Language",
+            "type": "string"
+          },
+          "external_link_language_priority": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "External Link Language Priority",
             "type": "array"
           }
         },
@@ -2323,6 +3269,39 @@
             "title": "Internal Link Targets",
             "type": "array"
           },
+          "key_action_page_url": {
+            "default": "",
+            "title": "Key Action Page Url",
+            "type": "string"
+          },
+          "key_action_page_language": {
+            "default": "",
+            "title": "Key Action Page Language",
+            "type": "string"
+          },
+          "key_action_page_reason": {
+            "default": "",
+            "title": "Key Action Page Reason",
+            "type": "string"
+          },
+          "external_link_url": {
+            "default": "",
+            "title": "External Link Url",
+            "type": "string"
+          },
+          "external_link_language": {
+            "default": "",
+            "title": "External Link Language",
+            "type": "string"
+          },
+          "external_link_language_priority": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "External Link Language Priority",
+            "type": "array"
+          },
           "differentiation_notes": {
             "default": "",
             "title": "Differentiation Notes",
@@ -2554,6 +3533,39 @@
                   "type": "string"
                 },
                 "title": "Image Requirements",
+                "type": "array"
+              },
+              "key_action_page_url": {
+                "default": "",
+                "title": "Key Action Page Url",
+                "type": "string"
+              },
+              "key_action_page_language": {
+                "default": "",
+                "title": "Key Action Page Language",
+                "type": "string"
+              },
+              "key_action_page_reason": {
+                "default": "",
+                "title": "Key Action Page Reason",
+                "type": "string"
+              },
+              "external_link_url": {
+                "default": "",
+                "title": "External Link Url",
+                "type": "string"
+              },
+              "external_link_language": {
+                "default": "",
+                "title": "External Link Language",
+                "type": "string"
+              },
+              "external_link_language_priority": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "External Link Language Priority",
                 "type": "array"
               }
             },
@@ -3014,6 +4026,155 @@
       "owner_chat_tool": "content-strategy-app"
     },
     {
+      "name": "purge_pipeline_data",
+      "description": "Wipe ALL working pipeline data for every site -- opportunities, article briefs, editorial queue items, tracked site competitors, content audits, and cannibalization findings. Site profiles themselves (the connected sites) are NEVER touched -- only the downstream content-strategy work built on top of them. Irreversible. Requires confirm_wipe=true.",
+      "action_type": "destructive",
+      "chain_callable": true,
+      "effects": [
+        "delete:opportunity",
+        "delete:article_brief",
+        "delete:queue_item",
+        "delete:site_competitor",
+        "delete:content_audit",
+        "delete:cannibalization_finding"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "confirm_wipe": {
+            "default": false,
+            "description": "Must be explicitly true to run the purge. Safety flag so this can never fire by accident from a misread instruction.",
+            "title": "Confirm Wipe",
+            "type": "boolean"
+          }
+        },
+        "title": "PurgePipelineDataParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Outcome of a full pipeline data wipe — counts removed per collection,\nand which site profiles were kept untouched.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "opportunities_removed": {
+            "default": 0,
+            "title": "Opportunities Removed",
+            "type": "integer"
+          },
+          "briefs_removed": {
+            "default": 0,
+            "title": "Briefs Removed",
+            "type": "integer"
+          },
+          "queue_items_removed": {
+            "default": 0,
+            "title": "Queue Items Removed",
+            "type": "integer"
+          },
+          "competitors_removed": {
+            "default": 0,
+            "title": "Competitors Removed",
+            "type": "integer"
+          },
+          "content_audits_removed": {
+            "default": 0,
+            "title": "Content Audits Removed",
+            "type": "integer"
+          },
+          "cannibalization_findings_removed": {
+            "default": 0,
+            "title": "Cannibalization Findings Removed",
+            "type": "integer"
+          },
+          "kept_site_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Kept Site Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "PurgeResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "pipeline_purged",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
       "name": "list_connected_sites",
       "description": "List the sites already connected in other apps (WordPress Hub today, any future site provider) that Quick Add offers as one-click site profile candidates, flagging which ones are already registered here. Also the diagnostic for an empty Quick Add list: it reports whether a provider could not be reached and why.",
       "action_type": "read",
@@ -3158,548 +4319,6 @@
           "items"
         ],
         "title": "ConnectedSiteList",
-        "type": "object",
-        "x-sdl": "entity-list"
-      },
-      "event": "",
-      "background": false,
-      "long_running": false,
-      "scopes": [],
-      "owner_chat_tool": "content-strategy-app"
-    },
-    {
-      "name": "run_content_audit",
-      "description": "Deep audit of a site's EXISTING content -- MANDATORY before any new content strategy work for that site (discover_opportunities refuses to run without one). Pulls every live post from WordPress Hub (via inter-extension IPC, not chat), measures word count (flags thin content under 300 words), checks for a missing excerpt, extracts a cheap keyword signature per article, and cross-checks every pair for keyword cannibalization -- two+ articles competing for the same topic and splitting ranking signal instead of reinforcing one page. Always produces an explicit 'needs_doing' list, even when nothing is wrong, so the audit result is visible and actionable in the panel, never a silent pass.",
-      "action_type": "write",
-      "chain_callable": true,
-      "effects": [
-        "create:content_audit"
-      ],
-      "id_projection": "",
-      "params_schema": {
-        "properties": {
-          "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
-            "title": "Site Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "site_id"
-        ],
-        "title": "RunContentAuditParams",
-        "type": "object"
-      },
-      "return_schema": {
-        "$defs": {},
-        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "kind": {
-            "default": "",
-            "title": "Kind",
-            "type": "string"
-          },
-          "subtitle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Subtitle"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Description"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Status"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Url"
-          },
-          "site_id": {
-            "default": "",
-            "title": "Site Id",
-            "type": "string"
-          },
-          "total_posts": {
-            "default": 0,
-            "title": "Total Posts",
-            "type": "integer"
-          },
-          "posts_by_language": {
-            "default": {},
-            "title": "Posts By Language",
-            "type": "object",
-            "additionalProperties": {
-              "type": "integer"
-            }
-          },
-          "thin_content_count": {
-            "default": 0,
-            "title": "Thin Content Count",
-            "type": "integer"
-          },
-          "thin_content_urls": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Thin Content Urls",
-            "type": "array"
-          },
-          "missing_excerpt_count": {
-            "default": 0,
-            "title": "Missing Excerpt Count",
-            "type": "integer"
-          },
-          "cannibalization_pairs_found": {
-            "default": 0,
-            "title": "Cannibalization Pairs Found",
-            "type": "integer"
-          },
-          "covered_topics": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Covered Topics",
-            "type": "array"
-          },
-          "needs_doing": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Needs Doing",
-            "type": "array"
-          },
-          "audited_at": {
-            "default": "",
-            "title": "Audited At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "title"
-        ],
-        "title": "ContentAuditReport",
-        "type": "object",
-        "x-sdl": "entity"
-      },
-      "event": "content_audit_completed",
-      "background": false,
-      "long_running": false,
-      "scopes": [],
-      "owner_chat_tool": "content-strategy-app"
-    },
-    {
-      "name": "get_content_audit",
-      "description": "Read the most recent content audit for a site (run_content_audit's saved result).",
-      "action_type": "read",
-      "chain_callable": true,
-      "effects": [],
-      "id_projection": "",
-      "params_schema": {
-        "properties": {
-          "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
-            "title": "Site Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "site_id"
-        ],
-        "title": "GetContentAuditParams",
-        "type": "object"
-      },
-      "return_schema": {
-        "$defs": {},
-        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          },
-          "kind": {
-            "default": "",
-            "title": "Kind",
-            "type": "string"
-          },
-          "subtitle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Subtitle"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Description"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Status"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Url"
-          },
-          "site_id": {
-            "default": "",
-            "title": "Site Id",
-            "type": "string"
-          },
-          "total_posts": {
-            "default": 0,
-            "title": "Total Posts",
-            "type": "integer"
-          },
-          "posts_by_language": {
-            "default": {},
-            "title": "Posts By Language",
-            "type": "object",
-            "additionalProperties": {
-              "type": "integer"
-            }
-          },
-          "thin_content_count": {
-            "default": 0,
-            "title": "Thin Content Count",
-            "type": "integer"
-          },
-          "thin_content_urls": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Thin Content Urls",
-            "type": "array"
-          },
-          "missing_excerpt_count": {
-            "default": 0,
-            "title": "Missing Excerpt Count",
-            "type": "integer"
-          },
-          "cannibalization_pairs_found": {
-            "default": 0,
-            "title": "Cannibalization Pairs Found",
-            "type": "integer"
-          },
-          "covered_topics": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Covered Topics",
-            "type": "array"
-          },
-          "needs_doing": {
-            "default": [],
-            "items": {
-              "type": "string"
-            },
-            "title": "Needs Doing",
-            "type": "array"
-          },
-          "audited_at": {
-            "default": "",
-            "title": "Audited At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "title"
-        ],
-        "title": "ContentAuditReport",
-        "type": "object",
-        "x-sdl": "entity"
-      },
-      "event": "",
-      "background": false,
-      "long_running": false,
-      "scopes": [],
-      "owner_chat_tool": "content-strategy-app"
-    },
-    {
-      "name": "check_keyword_cannibalization",
-      "description": "Check for keyword cannibalization among a site's existing articles -- optionally including one NEW candidate keyword/topic, so a duplicate topic is caught BEFORE a new article is written, not after it's published and already splitting ranking signal with an old one. Requires a content audit to already exist for the site.",
-      "action_type": "read",
-      "chain_callable": true,
-      "effects": [],
-      "id_projection": "",
-      "params_schema": {
-        "properties": {
-          "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
-            "title": "Site Id",
-            "type": "string"
-          },
-          "candidate_keyword": {
-            "default": "",
-            "description": "Optional: a NEW topic/keyword being considered for a fresh article — checked against existing content so a duplicate topic is caught BEFORE writing, not after. Empty = audit existing articles against each other only.",
-            "title": "Candidate Keyword",
-            "type": "string"
-          }
-        },
-        "required": [
-          "site_id"
-        ],
-        "title": "CheckCannibalizationParams",
-        "type": "object"
-      },
-      "return_schema": {
-        "$defs": {
-          "CannibalizationFinding": {
-            "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page.",
-            "properties": {
-              "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
-              },
-              "title": {
-                "title": "Title",
-                "type": "string"
-              },
-              "kind": {
-                "default": "",
-                "title": "Kind",
-                "type": "string"
-              },
-              "subtitle": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Subtitle"
-              },
-              "description": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Description"
-              },
-              "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Status"
-              },
-              "url": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Url"
-              },
-              "site_id": {
-                "default": "",
-                "title": "Site Id",
-                "type": "string"
-              },
-              "shared_terms": {
-                "default": [],
-                "items": {
-                  "type": "string"
-                },
-                "title": "Shared Terms",
-                "type": "array"
-              },
-              "overlap_score": {
-                "default": 0.0,
-                "title": "Overlap Score",
-                "type": "number"
-              },
-              "urls": {
-                "default": [],
-                "items": {
-                  "type": "string"
-                },
-                "title": "Urls",
-                "type": "array"
-              },
-              "titles": {
-                "default": [],
-                "items": {
-                  "type": "string"
-                },
-                "title": "Titles",
-                "type": "array"
-              },
-              "recommendation": {
-                "default": "",
-                "title": "Recommendation",
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "title"
-            ],
-            "title": "CannibalizationFinding",
-            "type": "object",
-            "x-sdl": "entity"
-          }
-        },
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/$defs/CannibalizationFinding"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "total": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Total"
-          },
-          "page": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Page"
-          },
-          "has_more": {
-            "default": false,
-            "title": "Has More",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "items"
-        ],
-        "title": "CannibalizationFindingList",
         "type": "object",
         "x-sdl": "entity-list"
       },

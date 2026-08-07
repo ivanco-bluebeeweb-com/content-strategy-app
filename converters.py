@@ -119,6 +119,12 @@ def to_brief(d) -> ArticleBrief:
         internal_link_targets=data.get("internal_link_targets", []),
         differentiation_notes=data.get("differentiation_notes", ""),
         image_requirements=data.get("image_requirements", []),
+        key_action_page_url=data.get("key_action_page_url", ""),
+        key_action_page_language=data.get("key_action_page_language", ""),
+        key_action_page_reason=data.get("key_action_page_reason", ""),
+        external_link_url=data.get("external_link_url", ""),
+        external_link_language=data.get("external_link_language", ""),
+        external_link_language_priority=data.get("external_link_language_priority", []),
         status=data.get("status", "brief_ready"),
     )
 
@@ -170,6 +176,7 @@ def to_site_profile(d) -> SiteProfile:
         content_categories=data.get("content_categories", []),
         cta_default=data.get("cta_default", ""),
         cta_default_i18n=data.get("cta_default_i18n", {}),
+        external_sources_i18n=data.get("external_sources_i18n", {}),
     )
 
 

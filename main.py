@@ -2069,6 +2069,8 @@ async def sources_panel(ctx, **kwargs) -> object:
                     {"key": "Visual intent", "value": visual_guidance.get("visual_intent", "—")},
                     {"key": "Style direction", "value": visual_guidance.get("style_direction", "—")},
                     {"key": "Provider policy", "value": "Third-party first; Magnific only after technical failure"},
+                    {"key": "Approval basis", "value": f"Profile r{visual_guidance.get('profile_revision', '—')} · VBS r{visual_guidance.get('vbs_revision', '—')}"},
+                    {"key": "Snapshot", "value": visual_guidance.get("snapshot_hash", "—")},
                 ]),
                 ui.Text(
                     "This guidance is passed downstream as a non-generative constraint; it does not create or generate media.",

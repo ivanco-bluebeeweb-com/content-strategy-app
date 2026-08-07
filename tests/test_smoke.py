@@ -66,6 +66,9 @@ async def test_sources_panel_shows_approved_visual_guidance_as_read_only_context
     assert "read-only" in rendered
     assert "Grounded operational confidence" in rendered
     assert "Third-party first; Magnific only after technical failure" in rendered
+    assert "Profile r2" in rendered
+    assert "VBS r4" in rendered
+    assert "sha256:approved-basis" in rendered
     assert "does not create or generate media" in rendered
 
 

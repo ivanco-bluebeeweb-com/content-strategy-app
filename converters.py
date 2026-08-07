@@ -160,6 +160,7 @@ def to_calendar_entry(d) -> ContentCalendarEntry:
         working_title=data.get("working_title") or data.get("primary_query") or "",
         lifecycle_status=data.get("lifecycle_status", "idea"),
         content_type=data.get("content_type", "article"),
+        visual_baseline_state=data.get("visual_baseline_state", "not_attached"),
     )
 
 

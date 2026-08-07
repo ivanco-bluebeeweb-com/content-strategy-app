@@ -2672,6 +2672,11 @@
                 "default": "article",
                 "title": "Content Type",
                 "type": "string"
+              },
+              "visual_baseline_state": {
+                "default": "not_attached",
+                "title": "Visual Baseline State",
+                "type": "string"
               }
             },
             "required": [
@@ -2868,6 +2873,11 @@
               "content_type": {
                 "default": "article",
                 "title": "Content Type",
+                "type": "string"
+              },
+              "visual_baseline_state": {
+                "default": "not_attached",
+                "title": "Visual Baseline State",
                 "type": "string"
               }
             },

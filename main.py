@@ -1109,6 +1109,27 @@ async def build_content_calendar(ctx, params: BuildContentCalendarParams) -> Act
     )
 
 
+async def _calendar_entry_with_visual_baseline(ctx, doc) -> ContentCalendarEntry:
+    """Return calendar metadata without copying approved guidance into the queue."""
+    entry = _to_calendar_entry(doc)
+    brief_id = doc.data.get("brief_id", "")
+    if not brief_id:
+        return entry
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    if not brief_doc or not brief_doc.data.get("approved_visual_guidance"):
+        return entry
+    site_page = await ctx.store.query(
+        "site_profiles", where={"site_id": doc.data.get("site_id", "")}, limit=1
+    )
+    current_guidance = site_page.data[0].data.get("approved_visual_guidance", {}) if site_page.data else {}
+    brief_guidance = brief_doc.data["approved_visual_guidance"]
+    basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
+    entry.visual_baseline_state = "current" if current_guidance and all(
+        brief_guidance.get(field) == current_guidance.get(field) for field in basis_fields
+    ) else "stale"
+    return entry
+
+
 @chat.function(
     "get_content_calendar",
     description=(
@@ -1132,7 +1153,7 @@ async def get_content_calendar(ctx, params: GetContentCalendarParams) -> ActionR
         tag = f"-{params.month:02d}-"
         items = [d for d in items if tag in d.data.get("scheduled_date", "")]
     items.sort(key=lambda d: d.data.get("scheduled_date", ""))
-    entries = [_to_calendar_entry(d) for d in items]
+    entries = [await _calendar_entry_with_visual_baseline(ctx, d) for d in items]
     return ActionResult.success(
         ContentCalendarEntryList(items=entries, total=len(entries)),
         summary=f"{len(entries)} scheduled item(s).",

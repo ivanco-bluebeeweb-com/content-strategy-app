@@ -235,6 +235,7 @@ class ContentCalendarEntry(sdl.Entity):
     working_title: str = ""
     lifecycle_status: str = "idea"
     content_type: str = "article"
+    visual_baseline_state: str = "not_attached"  # current|stale|not_attached
 
 
 class ContentCalendarEntryList(sdl.EntityList[ContentCalendarEntry]):

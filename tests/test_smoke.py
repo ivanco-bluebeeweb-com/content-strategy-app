@@ -100,6 +100,37 @@ async def test_queue_panel_labels_current_and_stale_approved_visual_baselines():
 
 
 @pytest.mark.asyncio
+async def test_content_calendar_reports_current_and_stale_visual_baseline_without_guidance_payload():
+    from schemas import GetContentCalendarParams, UpdateSiteProfileParams
+    ctx = MockContext()
+    _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    guidance = _approved_visual_guidance()
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+    queue_items = await ctx.store.query("queue_items", where={"brief_id": brief_id}, limit=1)
+    await ctx.store.update("queue_items", queue_items.data[0].id, {"scheduled_date": "2026-08-12"})
+
+    current = await m.get_content_calendar(ctx, GetContentCalendarParams(site_id="g4s.md"))
+    assert current.status == "success"
+    assert current.data.items[0].visual_baseline_state == "current"
+    assert not hasattr(current.data.items[0], "approved_visual_guidance")
+
+    updated_guidance = _approved_visual_guidance()
+    updated_guidance["profile_revision"] = 3
+    updated_guidance["snapshot_hash"] = "sha256:new-approved-basis"
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=updated_guidance)
+    )
+
+    stale = await m.get_content_calendar(ctx, GetContentCalendarParams(site_id="g4s.md"))
+    assert stale.status == "success"
+    assert stale.data.items[0].visual_baseline_state == "stale"
+
+
+@pytest.mark.asyncio
 async def test_queue_panel_empty_state_has_sites_button():
     """The right-slot Sites panel (where Quick Add lives) is not guaranteed
     to auto-open at session start the way the left slot is. Editorial Queue

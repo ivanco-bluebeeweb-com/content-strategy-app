@@ -1870,6 +1870,23 @@ async def sources_panel(ctx, **kwargs) -> object:
             audit_items.append({"key": "Content audit", "value": "⚠️ Never run — required before new opportunities"})
             audit_body = [ui.KeyValue(columns=1, items=audit_items)]
 
+        visual_guidance = data.get("approved_visual_guidance", {})
+        visual_body = []
+        if visual_guidance:
+            visual_body = [
+                ui.Text("Approved visual guidance · read-only", variant="caption"),
+                ui.KeyValue(columns=1, items=[
+                    {"key": "Profile", "value": visual_guidance.get("profile_id", "Approved profile")},
+                    {"key": "Visual intent", "value": visual_guidance.get("visual_intent", "—")},
+                    {"key": "Style direction", "value": visual_guidance.get("style_direction", "—")},
+                    {"key": "Provider policy", "value": "Third-party first; Magnific only after technical failure"},
+                ]),
+                ui.Text(
+                    "This guidance is passed downstream as a non-generative constraint; it does not create or generate media.",
+                    variant="caption",
+                ),
+            ]
+
         audit_button = ui.Button(
             "🔎 Run content audit" if not audit_page.data else "🔎 Re-run content audit",
             variant="secondary", size="sm", full_width=True,
@@ -1880,7 +1897,7 @@ async def sources_panel(ctx, **kwargs) -> object:
             ui.Card(
                 title=data.get("brand_name") or site_id,
                 subtitle=data.get("domain", ""),
-                content=ui.Stack(direction="v", gap=2, children=audit_body + [audit_button]),
+                content=ui.Stack(direction="v", gap=2, children=audit_body + visual_body + [audit_button]),
             )
         )
 

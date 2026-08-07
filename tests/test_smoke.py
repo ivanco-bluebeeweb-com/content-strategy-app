@@ -49,6 +49,31 @@ async def _configure_required_link_inputs(ctx, *, site_id="g4s.md", language="en
 
 
 @pytest.mark.asyncio
+async def test_sources_panel_shows_approved_visual_guidance_as_read_only_context():
+    ctx = MockContext()
+    await m.create_site_profile(
+        ctx,
+        CreateSiteProfileParams(
+            site_id="visual.example",
+            domain="visual.example",
+            brand_name="Visual Site",
+            approved_visual_guidance={
+                "profile_id": "approved-profile-1",
+                "visual_intent": "Grounded operational confidence",
+                "style_direction": "Documentary realism",
+            },
+        ),
+    )
+
+    rendered = repr(await m.sources_panel(ctx))
+    assert "Approved visual guidance" in rendered
+    assert "read-only" in rendered
+    assert "Grounded operational confidence" in rendered
+    assert "Third-party first; Magnific only after technical failure" in rendered
+    assert "does not create or generate media" in rendered
+
+
+@pytest.mark.asyncio
 async def test_queue_panel_empty_state_has_sites_button():
     """The right-slot Sites panel (where Quick Add lives) is not guaranteed
     to auto-open at session start the way the left slot is. Editorial Queue

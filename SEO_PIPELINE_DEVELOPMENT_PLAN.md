@@ -1,0 +1,153 @@
+# SEO pipeline — development plan and visible delivery baseline
+
+**Updated:** 2026-08-07  
+**Scope:** SEO pipeline only.  
+**Working rule:** one vertical slice at a time: implement → test → deploy/push → confirm what is visible in Imperal panel.
+
+---
+
+## Why this plan exists
+
+Technical changes that do not produce a clear, observable result in the live product do **not** count as meaningful delivery by themselves. Every next slice must end with:
+
+1. a named user flow;
+2. a concrete place in the Imperal panel where it appears;
+3. an explicit success state and failure/stale state;
+4. automated regression coverage;
+5. build, validation, commit, and push.
+
+No image generation, media-package creation, or asset upload belongs to the current scope. Visual guidance is read-only. Provider policy stays: **third-party providers first; Magnific only after a technical failure of other providers.**
+
+---
+
+## Current baseline — already built and pushed
+
+### What works in code
+
+The approved Visual Profile / VBS baseline travels safely through:
+
+`Brand Strategy approval → Site Profile → Article Brief → Writer / Media handoff`
+
+It is fail-closed:
+
+- approval basis uses `profile_id`, `profile_revision`, `vbs_id`, `vbs_revision`, and `snapshot_hash`;
+- an outdated basis is marked **stale**;
+- stale guidance cannot be sent to Media Studio;
+- stale guidance is omitted from Writer handoff;
+- Refresh copies the current approved Site Profile guidance into the brief without generating media.
+
+### What should now be visible in the panel
+
+**Imperal panel → Content Strategy Hub**
+
+- **Sites / Sources:** approved visual guidance shows visual direction, provider policy, Profile/VBS revisions and snapshot hash.
+- **Editorial Queue:** briefs with visual guidance show `Visual baseline: current` or `Visual baseline: stale`.
+- **Brief:**
+  - current baseline: `Build Media Studio handoff` is available;
+  - stale baseline: Media handoff is unavailable and `Refresh approved visual guidance` is offered.
+- **Calendar API response:** exposes `visual_baseline_state` without copying visual guidance into queue/calendar records.
+
+### Latest delivered commits
+
+- `0c00fcd` — centralised fail-closed visual-baseline comparison
+- `d3f7ff4` — omit stale visual guidance from Writer handoff
+- `b59e19d` — preserve baseline status while scheduling a calendar
+- `84a08ce` — expose baseline status in content calendar
+- `574b7d8` — show baseline status in editorial queue
+- `4c0cdab` — show approval provenance in Sources UI
+- `cedd8db` — refresh stale guidance before Media handoff
+
+---
+
+## Phase P0-A — prove the current UI flow in live panel
+
+**Goal:** validate that the already built safety flow is actually visible and usable, not merely covered by tests.
+
+### User-visible flow
+
+1. Open **Content Strategy Hub → Editorial Queue**.
+2. Open a brief marked `Visual baseline: stale`.
+3. See `Refresh approved visual guidance`.
+4. Run refresh.
+5. Reopen the brief and see `Build Media Studio handoff`.
+6. Confirm the handoff is read-only: no media package, no images, no generation.
+
+### Definition of done
+
+- The full flow is confirmed in the live panel on one real/representative brief.
+- Any panel/render/action-wiring defect becomes a platform/product issue note, with reproduction steps.
+- No new functionality is added before this check is complete.
+
+**Status:** `NEXT — manual UI spike required`  
+**Owner:** Vlad checks the panel; Webbee fixes any reproducible product issue immediately.
+
+---
+
+## Phase P0-B — make Writer readiness visible in Brief UI
+
+**Goal:** the same Brief screen must communicate readiness for **both** downstream routes, not only Media Studio.
+
+### User-visible result
+
+In **Content Strategy Hub → Brief**:
+
+- `Writer handoff: ready` when baseline is current;
+- `Writer handoff: visual guidance excluded — baseline stale` when it is stale;
+- the existing Refresh action remains the recovery path;
+- no generation controls appear.
+
+### Definition of done
+
+- One brief screen visibly explains Media and Writer readiness independently.
+- `current` and `stale` states have UI regression tests.
+- Build / validation / push pass.
+
+**Status:** `PLANNED — begins after P0-A`.
+
+---
+
+## Phase P0-C — visible, read-only handoff review
+
+**Goal:** make each assembled downstream payload inspectable before it leaves Content Strategy.
+
+### User-visible result
+
+A Brief shows a compact read-only handoff review:
+
+- target app: Writer or Media Studio;
+- baseline state and approval provenance;
+- explicit boundary: `No media is generated here`;
+- third-party-first provider policy for Media;
+- no send/create/generate action in this app.
+
+### Definition of done
+
+- The user can see exactly what guidance will be handed over, without needing logs or code.
+- No asset generation or upload is introduced.
+- Regression coverage protects data minimisation and stale fail-closed behaviour.
+
+**Status:** `PLANNED`.
+
+---
+
+## Explicitly out of scope until the P0 UI flow is proven
+
+- Creating Media Studio packages or generating images.
+- Direct image upload to WordPress.
+- Personal imagery, facial recognition, face swap, synthetic likenesses, or consent/license collection UI.
+- Reopening audit/evidence hash hardening without a newly observed defect.
+- Broad SEO features unrelated to this approval-to-handoff slice.
+
+---
+
+## Working cadence
+
+For every slice, Webbee will report only:
+
+- **what became visible in the panel;**
+- **where to see it;**
+- **which commit was pushed;**
+- **test/build/validation result;**
+- **the next single visible slice.**
+
+A commit without a panel-visible outcome will be described as maintenance, not as product progress.

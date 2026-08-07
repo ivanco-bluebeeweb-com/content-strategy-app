@@ -1196,6 +1196,15 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
     profile_page = await ctx.store.query("site_profiles", where={"site_id": brief.get("site_id", "")}, limit=1)
     site = profile_page.data[0].data if profile_page.data else {}
     guidance = brief.get("approved_visual_guidance", {})
+    if not guidance:
+        return ActionResult.error(
+            "Brief has no approved visual guidance; Media Studio handoff is unavailable.",
+            retryable=False,
+        )
+    try:
+        guidance = _normalize_approved_visual_guidance(guidance)
+    except (TypeError, ValueError) as exc:
+        return ActionResult.error(str(exc), retryable=False)
     prohibited = guidance.get("prohibited_patterns", [])
     style_parts = [guidance.get("style_direction", "")]
     if prohibited:
@@ -1216,7 +1225,11 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
         model="auto",
         style_direction=" ".join(part for part in style_parts if part),
         source_brief_id=brief_doc.id,
-        approved_visual_profile_id=guidance.get("profile_id", ""),
+        approved_visual_profile_id=guidance["profile_id"],
+        approved_visual_profile_revision=guidance["profile_revision"],
+        approved_vbs_id=guidance["vbs_id"],
+        approved_vbs_revision=guidance["vbs_revision"],
+        approved_snapshot_hash=guidance["snapshot_hash"],
     )
     return ActionResult.success(handoff, "Read-only Media Studio draft-brief payload is ready; no media package or assets were created.")
 
@@ -1745,6 +1758,8 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
                     {"key": "Visual intent", "value": visual_guidance.get("visual_intent", "—")},
                     {"key": "Style direction", "value": visual_guidance.get("style_direction", "—")},
                     {"key": "Provider policy", "value": "Third-party first; Magnific only after technical failure"},
+                    {"key": "Approval basis", "value": f"Profile r{visual_guidance.get('profile_revision', '—')} · VBS r{visual_guidance.get('vbs_revision', '—')}"},
+                    {"key": "Snapshot", "value": visual_guidance.get("snapshot_hash", "—")},
                 ]),
                 ui.Form(
                     action="build_media_brief_handoff",

@@ -294,6 +294,10 @@ class MediaBriefHandoff(sdl.Entity):
     generation_boundary: str = "This handoff does not create a media package or generate assets."
     source_brief_id: str = ""
     approved_visual_profile_id: str = ""
+    approved_visual_profile_revision: int = 0
+    approved_vbs_id: str = ""
+    approved_vbs_revision: int = 0
+    approved_snapshot_hash: str = ""
 
 
 class BuildMediaBriefHandoffParams(BaseModel):

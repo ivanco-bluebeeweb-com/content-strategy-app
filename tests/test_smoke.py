@@ -426,6 +426,9 @@ async def test_brief_panel_exposes_read_only_media_handoff_for_approved_visual_g
     assert "Build Media Studio handoff" in rendered
     assert "build_media_brief_handoff" in rendered
     assert "Third-party first; Magnific only after technical failure" in rendered
+    assert "Profile r2" in rendered
+    assert "VBS r4" in rendered
+    assert "sha256:approved-basis" in rendered
     assert "does not generate images" in rendered
 
 
@@ -448,6 +451,10 @@ async def test_media_brief_handoff_preserves_approved_guidance_without_creating_
     payload = result.data
     assert payload.source_brief_id == brief_id
     assert payload.approved_visual_profile_id == "approved-profile-1"
+    assert payload.approved_visual_profile_revision == 2
+    assert payload.approved_vbs_id == "vbs-1"
+    assert payload.approved_vbs_revision == 4
+    assert payload.approved_snapshot_hash == "sha256:approved-basis"
     assert payload.model == "auto"
     assert payload.provider_policy == "third_party_only_unless_technical_failure"
     assert "Documentary realism" in payload.style_direction

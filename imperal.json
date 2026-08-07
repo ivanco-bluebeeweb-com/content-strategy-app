@@ -3258,6 +3258,26 @@
             "default": "",
             "title": "Approved Visual Profile Id",
             "type": "string"
+          },
+          "approved_visual_profile_revision": {
+            "default": 0,
+            "title": "Approved Visual Profile Revision",
+            "type": "integer"
+          },
+          "approved_vbs_id": {
+            "default": "",
+            "title": "Approved Vbs Id",
+            "type": "string"
+          },
+          "approved_vbs_revision": {
+            "default": 0,
+            "title": "Approved Vbs Revision",
+            "type": "integer"
+          },
+          "approved_snapshot_hash": {
+            "default": "",
+            "title": "Approved Snapshot Hash",
+            "type": "string"
           }
         },
         "required": [

@@ -1203,8 +1203,20 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
         )
     try:
         guidance = _normalize_approved_visual_guidance(guidance)
+        current_guidance = _normalize_approved_visual_guidance(site.get("approved_visual_guidance", {}))
     except (TypeError, ValueError) as exc:
         return ActionResult.error(str(exc), retryable=False)
+    if not current_guidance:
+        return ActionResult.error(
+            "Site Profile no longer has approved visual guidance; Media Studio handoff is unavailable.",
+            retryable=False,
+        )
+    basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
+    if any(guidance[field] != current_guidance[field] for field in basis_fields):
+        return ActionResult.error(
+            "Brief visual guidance is stale versus the current approved Site Profile baseline. Rebuild the brief before creating a Media Studio handoff.",
+            retryable=False,
+        )
     prohibited = guidance.get("prohibited_patterns", [])
     style_parts = [guidance.get("style_direction", "")]
     if prohibited:

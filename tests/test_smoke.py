@@ -468,6 +468,34 @@ async def test_media_brief_handoff_preserves_approved_guidance_without_creating_
 
 
 @pytest.mark.asyncio
+async def test_media_brief_handoff_rejects_stale_visual_guidance_basis():
+    from schemas import BuildMediaBriefHandoffParams, UpdateSiteProfileParams
+    ctx = MockContext()
+    _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    stale_guidance = _approved_visual_guidance()
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=stale_guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": stale_guidance})
+
+    current_guidance = _approved_visual_guidance()
+    current_guidance["profile_revision"] = 3
+    current_guidance["snapshot_hash"] = "sha256:new-approved-basis"
+    updated = await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=current_guidance)
+    )
+    assert updated.status == "success"
+
+    result = await m.build_media_brief_handoff(
+        ctx, BuildMediaBriefHandoffParams(brief_id=brief_id)
+    )
+    assert result.status == "error"
+    assert "stale" in repr(result)
+    assert "Rebuild the brief" in repr(result)
+
+
+@pytest.mark.asyncio
 async def test_build_writer_brief_missing_brief_errors():
     from schemas import BuildWriterBriefParams
     ctx = MockContext()

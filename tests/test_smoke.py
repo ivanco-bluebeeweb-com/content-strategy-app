@@ -494,6 +494,16 @@ async def test_build_writer_brief_omits_stale_visual_guidance():
     assert "Grounded operational confidence" not in result.data.body
 
 
+def test_approved_visual_baseline_comparison_fails_closed_on_missing_basis():
+    current = _approved_visual_guidance()
+    incomplete = _approved_visual_guidance()
+    incomplete.pop("snapshot_hash")
+
+    assert m._approved_visual_baseline_is_current(_approved_visual_guidance(), current)
+    assert not m._approved_visual_baseline_is_current(incomplete, current)
+    assert not m._approved_visual_baseline_is_current({}, current)
+
+
 @pytest.mark.asyncio
 async def test_site_profile_rejects_visual_guidance_without_approved_basis():
     ctx = MockContext()

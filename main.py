@@ -208,6 +208,20 @@ def _normalize_approved_visual_guidance(guidance: dict[str, object]) -> dict[str
     }
 
 
+_APPROVED_VISUAL_BASIS_FIELDS = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
+
+
+def _approved_visual_baseline_is_current(
+    brief_guidance: dict[str, object], current_guidance: dict[str, object]
+) -> bool:
+    """Compare the immutable approved-baseline basis; missing data fails closed."""
+    return bool(brief_guidance and current_guidance) and all(
+        brief_guidance.get(field) and current_guidance.get(field)
+        and brief_guidance[field] == current_guidance[field]
+        for field in _APPROVED_VISUAL_BASIS_FIELDS
+    )
+
+
 @chat.function(
     "create_site_profile",
     description=(
@@ -1123,10 +1137,9 @@ async def _calendar_entry_with_visual_baseline(ctx, doc) -> ContentCalendarEntry
     )
     current_guidance = site_page.data[0].data.get("approved_visual_guidance", {}) if site_page.data else {}
     brief_guidance = brief_doc.data["approved_visual_guidance"]
-    basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
-    entry.visual_baseline_state = "current" if current_guidance and all(
-        brief_guidance.get(field) == current_guidance.get(field) for field in basis_fields
-    ) else "stale"
+    entry.visual_baseline_state = (
+        "current" if _approved_visual_baseline_is_current(brief_guidance, current_guidance) else "stale"
+    )
     return entry
 
 
@@ -1273,8 +1286,7 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
             "Site Profile no longer has approved visual guidance; Media Studio handoff is unavailable.",
             retryable=False,
         )
-    basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
-    if any(guidance[field] != current_guidance[field] for field in basis_fields):
+    if not _approved_visual_baseline_is_current(guidance, current_guidance):
         return ActionResult.error(
             "Brief visual guidance is stale versus the current approved Site Profile baseline. Rebuild the brief before creating a Media Studio handoff.",
             retryable=False,
@@ -1357,9 +1369,8 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
     ]
     visual_guidance = brief.get("approved_visual_guidance", {})
     current_guidance = profile.get("approved_visual_guidance", {})
-    basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
-    visual_guidance_is_current = visual_guidance and current_guidance and all(
-        visual_guidance.get(field) == current_guidance.get(field) for field in basis_fields
+    visual_guidance_is_current = _approved_visual_baseline_is_current(
+        visual_guidance, current_guidance
     )
     if visual_guidance_is_current:
         body_lines += [
@@ -1755,10 +1766,9 @@ async def queue_panel(ctx, site_id: str = "", **kwargs) -> object:
             if brief_doc and brief_doc.data.get("approved_visual_guidance"):
                 brief_guidance = brief_doc.data["approved_visual_guidance"]
                 current_guidance = profiles_by_site_id.get(data.get("site_id", ""), {}).get("approved_visual_guidance", {})
-                basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
-                baseline_state = "current" if current_guidance and all(
-                    brief_guidance.get(field) == current_guidance.get(field) for field in basis_fields
-                ) else "stale"
+                baseline_state = (
+                    "current" if _approved_visual_baseline_is_current(brief_guidance, current_guidance) else "stale"
+                )
                 subtitle = f"{subtitle} · Visual baseline: {baseline_state}"
         items.append(
             ui.ListItem(
@@ -1853,9 +1863,8 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
         if visual_guidance:
             site_page = await ctx.store.query("site_profiles", where={"site_id": brief.get("site_id", "")}, limit=1)
             current_guidance = site_page.data[0].data.get("approved_visual_guidance", {}) if site_page.data else {}
-            basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
-            handoff_available = bool(current_guidance) and all(
-                visual_guidance.get(field) == current_guidance.get(field) for field in basis_fields
+            handoff_available = _approved_visual_baseline_is_current(
+                visual_guidance, current_guidance
             )
             handoff_control = (
                 ui.Form(

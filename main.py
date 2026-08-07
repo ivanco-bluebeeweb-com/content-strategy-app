@@ -1710,15 +1710,29 @@ async def queue_panel(ctx, site_id: str = "", **kwargs) -> object:
         )
         return body
 
+    profile_page = await ctx.store.query("site_profiles", limit=500)
+    profiles_by_site_id = {doc.data.get("site_id", ""): doc.data for doc in profile_page.data}
+
     items = []
     for d in docs:
         data = d.data
         status = data.get("lifecycle_status", "idea")
+        subtitle = data.get("site_id", "")
+        if data.get("brief_id"):
+            brief_doc = await ctx.store.get("article_briefs", data["brief_id"])
+            if brief_doc and brief_doc.data.get("approved_visual_guidance"):
+                brief_guidance = brief_doc.data["approved_visual_guidance"]
+                current_guidance = profiles_by_site_id.get(data.get("site_id", ""), {}).get("approved_visual_guidance", {})
+                basis_fields = ("profile_id", "profile_revision", "vbs_id", "vbs_revision", "snapshot_hash")
+                baseline_state = "current" if current_guidance and all(
+                    brief_guidance.get(field) == current_guidance.get(field) for field in basis_fields
+                ) else "stale"
+                subtitle = f"{subtitle} · Visual baseline: {baseline_state}"
         items.append(
             ui.ListItem(
                 id=d.id,
                 title=data.get("primary_query") or data.get("working_title") or d.id,
-                subtitle=data.get("site_id", ""),
+                subtitle=subtitle,
                 badge=ui.Badge(_STATUS_LABEL.get(status, status), color=_STATUS_COLOR.get(status, "gray")),
                 on_click=ui.Call("__panel__brief", queue_item_id=d.id),
             )

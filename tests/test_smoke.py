@@ -73,6 +73,33 @@ async def test_sources_panel_shows_approved_visual_guidance_as_read_only_context
 
 
 @pytest.mark.asyncio
+async def test_queue_panel_labels_current_and_stale_approved_visual_baselines():
+    from schemas import UpdateSiteProfileParams
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    guidance = _approved_visual_guidance()
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+
+    current_rendered = repr(await m.queue_panel(ctx))
+    assert "Visual baseline: current" in current_rendered
+
+    updated_guidance = _approved_visual_guidance()
+    updated_guidance["profile_revision"] = 3
+    updated_guidance["snapshot_hash"] = "sha256:new-approved-basis"
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=updated_guidance)
+    )
+
+    stale_rendered = repr(await m.queue_panel(ctx))
+    assert "Visual baseline: stale" in stale_rendered
+    assert queue_item_id in stale_rendered
+
+
+@pytest.mark.asyncio
 async def test_queue_panel_empty_state_has_sites_button():
     """The right-slot Sites panel (where Quick Add lives) is not guaranteed
     to auto-open at session start the way the left slot is. Editorial Queue

@@ -94,6 +94,12 @@
             "description": "Verified authoritative external source URLs keyed by their content language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}. The pipeline selects the article language first, then this site's configured language-priority fallback.",
             "title": "External Sources I18N",
             "type": "object"
+          },
+          "approved_visual_guidance": {
+            "additionalProperties": true,
+            "description": "Read-only approved Visual Profile guidance relayed from Brand Strategy Hub. It is appended to downstream briefs as a non-generative media constraint.",
+            "title": "Approved Visual Guidance",
+            "type": "object"
           }
         },
         "required": [
@@ -240,6 +246,12 @@
             },
             "default": {},
             "title": "External Sources I18N",
+            "type": "object"
+          },
+          "approved_visual_guidance": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Approved Visual Guidance",
             "type": "object"
           }
         },
@@ -395,6 +407,20 @@
             "default": null,
             "description": "Replace verified external source URLs keyed by source language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}; omit to keep",
             "title": "External Sources I18N"
+          },
+          "approved_visual_guidance": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace the read-only approved Visual Profile guidance relayed from Brand Strategy Hub; omit to keep. This stores guidance only and never creates or generates media.",
+            "title": "Approved Visual Guidance"
           }
         },
         "required": [
@@ -540,6 +566,12 @@
             },
             "default": {},
             "title": "External Sources I18N",
+            "type": "object"
+          },
+          "approved_visual_guidance": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Approved Visual Guidance",
             "type": "object"
           }
         },
@@ -715,6 +747,12 @@
                 },
                 "default": {},
                 "title": "External Sources I18N",
+                "type": "object"
+              },
+              "approved_visual_guidance": {
+                "additionalProperties": true,
+                "default": {},
+                "title": "Approved Visual Guidance",
                 "type": "object"
               }
             },
@@ -2417,6 +2455,12 @@
             "title": "Image Requirements",
             "type": "array"
           },
+          "approved_visual_guidance": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Approved Visual Guidance",
+            "type": "object"
+          },
           "key_action_page_url": {
             "default": "",
             "title": "Key Action Page Url",
@@ -3306,6 +3350,12 @@
             "default": "",
             "title": "Differentiation Notes",
             "type": "string"
+          },
+          "approved_visual_guidance": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Approved Visual Guidance",
+            "type": "object"
           }
         },
         "required": [
@@ -3534,6 +3584,12 @@
                 },
                 "title": "Image Requirements",
                 "type": "array"
+              },
+              "approved_visual_guidance": {
+                "additionalProperties": true,
+                "default": {},
+                "title": "Approved Visual Guidance",
+                "type": "object"
               },
               "key_action_page_url": {
                 "default": "",

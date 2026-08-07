@@ -334,6 +334,40 @@ async def test_build_writer_brief_assembles_article_writer_payload():
 
 
 @pytest.mark.asyncio
+async def test_approved_visual_guidance_flows_from_site_profile_to_writer_brief_without_media_generation():
+    from schemas import BuildWriterBriefParams, UpdateSiteProfileParams
+    ctx = MockContext()
+    _queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    guidance = {
+        "profile_id": "approved-profile-1",
+        "visual_intent": "Grounded operational confidence",
+        "style_direction": "Documentary realism; show real working environments",
+        "prohibited_patterns": ["Synthetic likenesses", "Faces used as identity claims"],
+        "provider_policy": "third_party_only_unless_technical_failure",
+        "generation_boundary": "No generation is performed by this handoff.",
+    }
+
+    updated = await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
+    )
+    assert updated.status == "success"
+
+    # A newly-created brief copies this field from Site Profile. The fixture’s
+    # opportunity already has its one permitted brief, so model the stored
+    # downstream record directly and validate the reader contract from it.
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+    result = await m.build_writer_brief(ctx, BuildWriterBriefParams(brief_id=brief_id))
+
+    assert result.status == "success"
+    assert result.data.approved_visual_guidance == guidance
+    assert "## Approved visual guidance (non-generative)" in result.data.body
+    assert "Grounded operational confidence" in result.data.body
+    assert "third-party providers first; Magnific only after other providers technically fail" in result.data.body
+    assert "generate media" in result.data.body
+
+
+@pytest.mark.asyncio
 async def test_build_writer_brief_missing_brief_errors():
     from schemas import BuildWriterBriefParams
     ctx = MockContext()

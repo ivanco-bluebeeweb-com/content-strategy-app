@@ -27,6 +27,7 @@ class SiteProfile(sdl.Entity):
     cta_default: str = ""
     cta_default_i18n: dict[str, str] = {}  # optional per-language override for cta_default
     external_sources_i18n: dict[str, list[str]] = {}  # verified source URLs, keyed by source language
+    approved_visual_guidance: dict[str, object] = {}  # read-only payload from Brand Strategy Hub's approved Visual Profile handoff
 
 
 class SiteProfileList(sdl.EntityList[SiteProfile]):
@@ -48,6 +49,7 @@ class UpdateSiteProfileParams(BaseModel):
     cta_default: str | None = Field(default=None, description="New default CTA; omit to keep")
     cta_default_i18n: dict[str, str] | None = Field(default=None, description="Replace per-language CTA overrides; omit to keep")
     external_sources_i18n: dict[str, list[str]] | None = Field(default=None, description="Replace verified external source URLs keyed by source language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}; omit to keep")
+    approved_visual_guidance: dict[str, object] | None = Field(default=None, description="Replace the read-only approved Visual Profile guidance relayed from Brand Strategy Hub; omit to keep. This stores guidance only and never creates or generates media.")
 
 
 class Opportunity(sdl.Entity):
@@ -104,6 +106,7 @@ class ArticleBrief(sdl.Entity, sdl.Bodied):
     internal_link_targets: list[str] = []
     differentiation_notes: str = ""
     image_requirements: list[str] = []
+    approved_visual_guidance: dict[str, object] = {}  # approved, non-generative VBS/Profile constraint copied from the site
     key_action_page_url: str = ""
     key_action_page_language: str = ""
     key_action_page_reason: str = ""
@@ -213,6 +216,7 @@ class CreateSiteProfileParams(BaseModel):
     cta_default: str = Field("", description="Default call-to-action goal for articles on this site")
     cta_default_i18n: dict[str, str] = Field(default_factory=dict, description="Optional per-language override of cta_default, e.g. {'ru': '...', 'ro': '...'}")
     external_sources_i18n: dict[str, list[str]] = Field(default_factory=dict, description="Verified authoritative external source URLs keyed by their content language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}. The pipeline selects the article language first, then this site's configured language-priority fallback.")
+    approved_visual_guidance: dict[str, object] = Field(default_factory=dict, description="Read-only approved Visual Profile guidance relayed from Brand Strategy Hub. It is appended to downstream briefs as a non-generative media constraint.")
 
 
 class ListSiteProfilesParams(BaseModel):
@@ -302,6 +306,7 @@ class WriterBrief(sdl.Entity, sdl.Bodied):
     external_link_language: str = ""
     external_link_language_priority: list[str] = []
     differentiation_notes: str = ""
+    approved_visual_guidance: dict[str, object] = {}
 
 
 # ──────────────────────────────────────────────────────────────────────────

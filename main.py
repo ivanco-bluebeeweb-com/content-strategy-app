@@ -214,6 +214,7 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
             "cta_default": params.cta_default,
             "cta_default_i18n": params.cta_default_i18n,
             "external_sources_i18n": params.external_sources_i18n,
+            "approved_visual_guidance": params.approved_visual_guidance,
         },
     )
     return ActionResult.success(
@@ -253,7 +254,7 @@ async def update_site_profile(ctx, params: UpdateSiteProfileParams) -> ActionRes
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
-    for field in ("business_description_i18n", "target_languages", "content_categories", "cta_default_i18n", "external_sources_i18n"):
+    for field in ("business_description_i18n", "target_languages", "content_categories", "cta_default_i18n", "external_sources_i18n", "approved_visual_guidance"):
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
@@ -938,6 +939,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "external_link_language_priority": external_language_priority,
             "differentiation_notes": "",
             "image_requirements": image_requirements,
+            "approved_visual_guidance": profile.get("approved_visual_guidance", {}),
             "status": "brief_ready",
         },
     )
@@ -1187,6 +1189,16 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
         "- End the article with a CTA that is a markdown link to the resolved key action page; use a natural, language-appropriate anchor that expresses the CTA goal.",
         f"- Resolved key action page: {brief.get('key_action_page_url', '')} ({brief.get('key_action_page_reason', '')})",
     ]
+    visual_guidance = brief.get("approved_visual_guidance", {})
+    if visual_guidance:
+        body_lines += [
+            "",
+            "## Approved visual guidance (non-generative)",
+            f"- Visual intent: {visual_guidance.get('visual_intent', '')}",
+            f"- Style direction: {visual_guidance.get('style_direction', '')}",
+            f"- Prohibited patterns: {', '.join(visual_guidance.get('prohibited_patterns', [])) or 'None recorded'}",
+            "- Do not generate media from this brief. If handed to Media Studio later, use third-party providers first; Magnific only after other providers technically fail.",
+        ]
 
     payload = WriterBrief(
         id=brief_doc.id,
@@ -1211,6 +1223,7 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
         external_link_language=brief.get("external_link_language", ""),
         external_link_language_priority=brief.get("external_link_language_priority", []),
         differentiation_notes=brief.get("differentiation_notes", ""),
+        approved_visual_guidance=visual_guidance,
     )
     return ActionResult.success(payload, summary=f"Writer brief assembled for '{payload.working_title}'.")
 

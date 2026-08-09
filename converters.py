@@ -35,6 +35,31 @@ def guess_intent(query: str) -> str:
     return "informational"
 
 
+def decide_image_text_policy(search_intent: str, prohibited_patterns: list | None = None) -> str:
+    """Content Strategy's own signal into the image prompt's in-image-text
+    instruction -- the actual link this app was missing between "what kind
+    of article is this" and "should Media Studio's prompt allow legible
+    text baked into the picture".
+
+    Default is 'no_text': a clean photographic/illustrative image, safest
+    for most articles and cheapest to get right from an image model.
+    'commercial' intent (buy/price/cost/quote-type queries -- see
+    guess_intent's own hint list) is the one case where legible in-image
+    text (a price tag, a comparison label, a plan name) plausibly helps the
+    reader, so it opts into 'allow_text'.
+
+    prohibited_patterns is the approved VBS/Visual Profile's own forbidden-
+    pattern list (Brand Strategy Hub); if ANY entry mentions "text", that
+    approval-gated brand constraint always wins over the intent heuristic
+    and forces 'no_text' -- Content Strategy has no authority to override
+    an approved brand guardrail.
+    """
+    for pattern in (prohibited_patterns or []):
+        if "text" in str(pattern).lower():
+            return "no_text"
+    return "allow_text" if search_intent == "commercial" else "no_text"
+
+
 def cluster_label(query: str) -> str:
     """Cheap heuristic clustering: strip stopwords/numbers, take the first
     two significant tokens as a cluster key. Good enough for MVP grouping;
@@ -119,6 +144,7 @@ def to_brief(d) -> ArticleBrief:
         internal_link_targets=data.get("internal_link_targets", []),
         differentiation_notes=data.get("differentiation_notes", ""),
         image_requirements=data.get("image_requirements", []),
+        text_policy=data.get("text_policy", "no_text"),
         approved_visual_guidance=data.get("approved_visual_guidance", {}),
         key_action_page_url=data.get("key_action_page_url", ""),
         key_action_page_language=data.get("key_action_page_language", ""),

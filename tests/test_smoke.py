@@ -394,6 +394,70 @@ async def test_update_queue_status_happy_and_missing():
     assert missing.status == "error"
 
 
+@pytest.mark.asyncio
+async def test_decide_image_text_policy_defaults_to_no_text():
+    from converters import decide_image_text_policy
+    assert decide_image_text_policy("informational") == "no_text"
+    assert decide_image_text_policy("navigational") == "no_text"
+
+
+@pytest.mark.asyncio
+async def test_decide_image_text_policy_allows_text_for_commercial_intent():
+    from converters import decide_image_text_policy
+    assert decide_image_text_policy("commercial") == "allow_text"
+
+
+@pytest.mark.asyncio
+async def test_decide_image_text_policy_approved_no_text_pattern_overrides_commercial_intent():
+    from converters import decide_image_text_policy
+    assert decide_image_text_policy("commercial", ["No embedded text or logos"]) == "no_text"
+
+
+@pytest.mark.asyncio
+async def test_create_brief_sets_no_text_policy_for_informational_query():
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(
+        ctx, query="what is video surveillance"
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    assert brief_doc.data["text_policy"] == "no_text"
+
+
+@pytest.mark.asyncio
+async def test_create_brief_sets_allow_text_policy_for_commercial_query():
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(
+        ctx, query="security services chisinau"
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    assert brief_doc.data["text_policy"] == "allow_text"
+
+
+@pytest.mark.asyncio
+async def test_build_media_brief_handoff_carries_text_policy_and_brand_override_wins():
+    """A commercial-intent brief would normally get 'allow_text', but an
+    approved VBS/Visual Profile forbidding in-image text must always win --
+    Content Strategy has no authority to override an approved brand rule."""
+    from schemas import UpdateSiteProfileParams, BuildMediaBriefHandoffParams
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(
+        ctx, query="security services chisinau"
+    )
+    guidance = _approved_visual_guidance()
+    guidance["prohibited_patterns"] = ["No embedded text or logos"]
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+
+    handoff = await m.build_media_brief_handoff(
+        ctx, BuildMediaBriefHandoffParams(brief_id=brief_id)
+    )
+    assert handoff.status == "success"
+    assert handoff.data.text_policy == "no_text"
+
+
 async def _site_with_brief_ready_queue_item(ctx, query="security services chisinau"):
     """Shared setup: profile -> opportunity -> brief -> queue item at brief_ready."""
     await m.create_site_profile(

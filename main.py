@@ -45,6 +45,7 @@ from schemas import (
 from link_policy import language_priority, resolve_external_source, resolve_key_action_page
 from converters import (
     guess_intent, cluster_label, priority_score,
+    decide_image_text_policy as _decide_image_text_policy,
     detect_language_fallback as _detect_language_fallback,
     to_opportunity as _to_opportunity,
     to_brief as _to_brief,
@@ -965,6 +966,11 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         scored.sort(key=lambda pair: pair[0], reverse=True)
         internal_link_targets = [link for _, link in scored[:3] if link]
 
+    text_policy = _decide_image_text_policy(
+        opp.get("intent", "informational"),
+        profile.get("approved_visual_guidance", {}).get("prohibited_patterns", []),
+    )
+
     brief_doc = await ctx.store.create(
         "article_briefs",
         {
@@ -990,6 +996,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "external_link_language_priority": external_language_priority,
             "differentiation_notes": "",
             "image_requirements": image_requirements,
+            "text_policy": text_policy,
             "approved_visual_guidance": profile.get("approved_visual_guidance", {}),
             "status": "brief_ready",
         },
@@ -1295,6 +1302,7 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
     style_parts = [guidance.get("style_direction", "")]
     if prohibited:
         style_parts.append("Avoid: " + "; ".join(prohibited))
+    text_policy = _decide_image_text_policy(brief.get("search_intent", ""), prohibited)
     handoff = MediaBriefHandoff(
         id=f"media-handoff-{brief_doc.id}",
         title=f"Media brief handoff: {brief.get('working_title', '')}",
@@ -1310,6 +1318,7 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
         inline_count=len(brief.get("image_requirements", [])) - 1 if brief.get("image_requirements") else 2,
         model="auto",
         style_direction=" ".join(part for part in style_parts if part),
+        text_policy=text_policy,
         source_brief_id=brief_doc.id,
         approved_visual_profile_id=guidance["profile_id"],
         approved_visual_profile_revision=guidance["profile_revision"],
@@ -1857,8 +1866,10 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
             )
         )
         visual_guidance = brief.get("approved_visual_guidance", {})
+        text_policy_label = "Allow legible text in image" if brief.get("text_policy") == "allow_text" else "No embedded text in image"
         image_children = [
             ui.Markdown(content=_image_reqs_markdown(brief.get("image_requirements", []))),
+            ui.Markdown(content=f"**In-image text policy:** {text_policy_label} (`{brief.get('text_policy', 'no_text')}`)"),
         ]
         if visual_guidance:
             site_page = await ctx.store.query("site_profiles", where={"site_id": brief.get("site_id", "")}, limit=1)

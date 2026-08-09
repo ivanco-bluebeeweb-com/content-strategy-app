@@ -106,6 +106,7 @@ class ArticleBrief(sdl.Entity, sdl.Bodied):
     internal_link_targets: list[str] = []
     differentiation_notes: str = ""
     image_requirements: list[str] = []
+    text_policy: str = "no_text"  # Content Strategy's own signal into the image prompt: 'no_text' or 'allow_text'
     approved_visual_guidance: dict[str, object] = {}  # approved, non-generative VBS/Profile constraint copied from the site
     key_action_page_url: str = ""
     key_action_page_language: str = ""
@@ -291,6 +292,7 @@ class MediaBriefHandoff(sdl.Entity):
     inline_count: int = 2
     model: str = "auto"  # third-party provider default; Magnific is technical-failure fallback only
     style_direction: str = ""
+    text_policy: str = "no_text"  # carried from the brief's own text_policy into Media Studio's create_media_brief
     provider_policy: str = "third_party_only_unless_technical_failure"
     generation_boundary: str = "This handoff does not create a media package or generate assets."
     source_brief_id: str = ""

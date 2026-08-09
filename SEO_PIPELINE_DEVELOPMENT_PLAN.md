@@ -99,8 +99,26 @@ It is fail-closed:
 - Any panel/render/action-wiring defect becomes a platform/product issue note, with reproduction steps.
 - No new functionality is added before this check is complete.
 
-**Status:** `NEXT — manual UI spike required`  
-**Owner:** Vlad checks the panel; Webbee fixes any reproducible product issue immediately.
+**Status:** `LIVE-PROVEN — 2026-08-09`
+**Owner:** Vlad checked the panel and confirmed the flow live (screenshot on file).
+
+### Live proof — 2026-08-09
+
+Before this flow could be checked at all, Climtec's site profile had **no** approved
+visual baseline stored yet (`approved_visual_guidance: {}`), so no queue item could
+show `current` or `stale`. While wiring it up, a real bug surfaced and was fixed
+first (see commit `b67feda`, content-strategy-app): `converters.py`'s
+`to_site_profile()` never read `approved_visual_guidance` back from the store, so
+`update_site_profile`/`list_site_profiles` silently returned `{}` even after a
+successful write. Panels were unaffected (they read the store directly), which is
+exactly why this stayed invisible until an external caller's own API response was
+checked. Fixed, covered by a new regression test (54/54 passing), deployed
+(`b67fedaa`), and verified live with a real API call before touching the panel.
+
+With the baseline written and one real brief refreshed, Vlad opened
+**Content Strategy Hub → Editorial Queue → "рекуператор для квартиры"** and
+confirmed live: `Visual baseline: current`, approval basis (Profile r1 · VBS r2),
+snapshot hash, and `Build Media Studio handoff` visible and read-only as designed.
 
 ---
 

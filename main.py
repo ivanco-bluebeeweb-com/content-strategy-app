@@ -3,7 +3,7 @@ site/audience, and hands off a structured brief downstream to article
 writing and the future Image/Media app.
 
 Boundaries (see notes "System architecture — Content Strategy app MVP"):
-- does NOT publish to WordPress (wp-site-connector's job)
+- does NOT publish to WordPress (wordpress-hub's job)
 - does NOT generate/edit images (future Image/Media app's job)
 - does NOT own technical SEO crawling (SEO Audit Engine's job)
 
@@ -91,7 +91,7 @@ async def health_check(ctx) -> bool:
 # returning [{"site_id", "name", "url", "status"}, ...]. Any future site
 # provider (Shopify, Webflow, a plain-domain connector, ...) is added here
 # and Quick Add picks it up automatically -- no panel code changes needed.
-SITE_PROVIDER_APP_IDS: list[str] = ["wp-site-connector"]
+SITE_PROVIDER_APP_IDS: list[str] = ["wordpress-hub"]
 
 
 def _canonical_site_id(row: dict) -> str:
@@ -120,7 +120,7 @@ async def _resolve_wp_site_id(ctx, site_id: str) -> str:
     so a transient IPC error degrades gracefully instead of hard-failing.
     """
     try:
-        rows = await ctx.extensions.call("wp-site-connector", "list_connected_sites")
+        rows = await ctx.extensions.call("wordpress-hub", "list_connected_sites")
     except Exception:
         rows = []
     for r in rows or []:
@@ -441,7 +441,7 @@ async def run_content_audit(ctx, params: RunContentAuditParams) -> ActionResult:
     wp_site_id = await _resolve_wp_site_id(ctx, params.site_id)
     try:
         raw_posts = await ctx.extensions.call(
-            "wp-site-connector", "list_posts_full", site_id=wp_site_id, limit=500,
+            "wordpress-hub", "list_posts_full", site_id=wp_site_id, limit=500,
         )
     except Exception as exc:  # noqa: BLE001 -- surfaced, not swallowed
         return ActionResult.error(
@@ -573,7 +573,7 @@ async def check_keyword_cannibalization(ctx, params: CheckCannibalizationParams)
         wp_site_id = await _resolve_wp_site_id(ctx, params.site_id)
         try:
             raw_posts = await ctx.extensions.call(
-                "wp-site-connector", "list_posts_full", site_id=wp_site_id, limit=500,
+                "wordpress-hub", "list_posts_full", site_id=wp_site_id, limit=500,
             )
         except Exception:
             raw_posts = []
@@ -845,7 +845,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
     wp_site_id = await _resolve_wp_site_id(ctx, opp.get("site_id", ""))
     try:
         action_pages = await ctx.extensions.call(
-            "wp-site-connector", "list_pages_full", site_id=wp_site_id, limit=500,
+            "wordpress-hub", "list_pages_full", site_id=wp_site_id, limit=500,
         )
     except Exception as exc:  # noqa: BLE001 -- a dependency failure must not silently bypass a quality gate
         return ActionResult.error(

@@ -38,7 +38,7 @@ async def _configure_required_link_inputs(ctx, *, site_id="g4s.md", language="en
     """
     profiles = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)
     languages = list(profiles.data[0].data.get("target_languages") or [language]) if profiles.data else [language]
-    ctx.extensions.register("wp-site-connector", "list_pages_full", _mock_action_pages([
+    ctx.extensions.register("wordpress-hub", "list_pages_full", _mock_action_pages([
         {"title": "Contact us", "slug": f"contact-{lang}", "link": f"https://{site_id}/{lang}/contact", "content": "", "lang": lang}
         for lang in languages
     ]))
@@ -894,7 +894,7 @@ async def test_sources_panel_with_sites_still_offers_create_form():
 
 def _wp_provider(ctx):
     ctx.extensions.register(
-        "wp-site-connector", "list_connected_sites",
+        "wordpress-hub", "list_connected_sites",
         lambda **kw: [{"site_id": "g4s.md", "name": "G4S Moldova",
                        "url": "https://g4s.md", "status": "connected"}],
     )
@@ -909,7 +909,7 @@ async def test_fetch_connected_sites_calls_every_registered_provider():
     assert len(sites) == 1
     assert sites[0]["site_id"] == "g4s.md"
     assert sites[0]["name"] == "G4S Moldova"
-    assert sites[0]["provider"] == "wp-site-connector"
+    assert sites[0]["provider"] == "wordpress-hub"
 
 
 @pytest.mark.asyncio
@@ -919,7 +919,7 @@ async def test_provider_slug_site_id_is_normalised_to_the_bare_domain():
     click would create a duplicate profile beside the existing one."""
     ctx = MockContext()
     ctx.extensions.register(
-        "wp-site-connector", "list_connected_sites",
+        "wordpress-hub", "list_connected_sites",
         lambda **kw: [{"site_id": "g4s-md", "name": "G4S Moldova",
                        "url": "https://www.g4s.md/", "status": "connected"}],
     )
@@ -936,7 +936,7 @@ async def test_fetch_connected_sites_reports_unreachable_provider_instead_of_hid
     sites, problems = await m.fetch_connected_sites(ctx)
     assert sites == []
     assert len(problems) == 1
-    assert problems[0]["provider"] == "wp-site-connector"
+    assert problems[0]["provider"] == "wordpress-hub"
     assert problems[0]["reason"]
 
 
@@ -976,7 +976,7 @@ async def test_sources_panel_quick_add_card_visible_even_when_provider_unreachab
     rendered = repr(node)
     assert "Quick Add" in rendered
     assert "Could not read connected sites from" in rendered
-    assert "wp-site-connector" in rendered
+    assert "wordpress-hub" in rendered
     assert "Refresh" in rendered
 
 
@@ -1015,7 +1015,7 @@ async def test_list_connected_sites_function_reports_tracked_flag():
     assert result.status == "success"
     assert len(result.data.items) == 1
     assert result.data.items[0].already_tracked is True
-    assert result.data.items[0].provider == "wp-site-connector"
+    assert result.data.items[0].provider == "wordpress-hub"
 
 
 @pytest.mark.asyncio
@@ -1098,7 +1098,7 @@ def _mock_posts_full(posts):
 async def test_run_content_audit_flags_thin_and_missing_excerpt():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
-    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
         {"id": 1, "title": "Ventilatie", "slug": "ventilatie", "link": "https://climtec.md/ventilatie",
          "content": "<p>" + ("cuvant " * 50) + "</p>", "excerpt": "", "lang": "ro", "categories": []},
         {"id": 2, "title": "Climatizare", "slug": "climatizare", "link": "https://climtec.md/climatizare",
@@ -1118,7 +1118,7 @@ async def test_run_content_audit_detects_cannibalization_pair():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
     shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
-    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
         {"id": 1, "title": "Cum alegi sistemul de ventilare A", "slug": "a", "link": "https://climtec.md/a",
          "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "x", "lang": "ro", "categories": []},
         {"id": 2, "title": "Cum alegi sistemul de ventilare B", "slug": "b", "link": "https://climtec.md/b",
@@ -1147,7 +1147,7 @@ async def test_get_content_audit_without_prior_run_errors():
 async def test_get_content_audit_reads_back_saved_report():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
-    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
         {"id": 1, "title": "X", "slug": "x", "link": "https://climtec.md/x",
          "content": "<p>" + ("word " * 400) + "</p>", "excerpt": "e", "lang": "ro", "categories": []},
     ]))
@@ -1174,7 +1174,7 @@ async def test_check_keyword_cannibalization_flags_candidate_against_existing():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
     shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
-    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
         {"id": 1, "title": "Cum alegi sistemul de ventilare pentru spatii comerciale",
          "slug": "a", "link": "https://climtec.md/a",
          "content": f"<p>{shared_text} {shared_text} {shared_text}</p>", "excerpt": "x",
@@ -1203,7 +1203,7 @@ async def test_check_keyword_cannibalization_requires_audit_for_candidate_check(
 async def test_sources_panel_shows_audit_status_and_needs_doing():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
-    ctx.extensions.register("wp-site-connector", "list_posts_full", _mock_posts_full([
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
         {"id": 1, "title": "X", "slug": "x", "link": "https://climtec.md/x",
          "content": "<p>" + ("word " * 50) + "</p>", "excerpt": "", "lang": "ro", "categories": []},
     ]))
@@ -1231,7 +1231,7 @@ async def test_create_brief_requires_real_action_page_and_verified_external_sour
     discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
         site_id="g4s.md", queries=[QuerySignal(query="security services", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
     ))
-    ctx.extensions.register("wp-site-connector", "list_pages_full", _mock_action_pages([]))
+    ctx.extensions.register("wordpress-hub", "list_pages_full", _mock_action_pages([]))
     result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
     assert result.status == "error"
     assert "KEY_ACTION_PAGE_REQUIRED" in result.error
@@ -1245,7 +1245,7 @@ async def test_create_brief_selects_article_language_external_source_then_fallba
         external_sources_i18n={"ro": ["https://source.example/ro"]},
     ))
     await _seed_audit(ctx, "climtec.md")
-    ctx.extensions.register("wp-site-connector", "list_pages_full", _mock_action_pages([
+    ctx.extensions.register("wordpress-hub", "list_pages_full", _mock_action_pages([
         {"title": "Контакты", "slug": "contact-ru", "link": "https://climtec.md/ru/contact", "content": "", "lang": "ru"},
         {"title": "Contact", "slug": "contact", "link": "https://climtec.md/contact", "content": "", "lang": "ro"},
     ]))

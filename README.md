@@ -8,7 +8,7 @@ tracks each through an editorial queue from `idea` to `published`.
 ## Boundaries (by design)
 
 This app does **not**:
-- publish to WordPress — that's `wp-site-connector`
+- publish to WordPress — that's `wordpress-hub`
 - generate or edit images — that's the planned Image/Media app
 - crawl or diagnose technical SEO — that's `SEO Audit Engine`
 

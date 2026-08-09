@@ -73,6 +73,37 @@ async def test_sources_panel_shows_approved_visual_guidance_as_read_only_context
 
 
 @pytest.mark.asyncio
+async def test_update_and_list_site_profile_return_approved_visual_guidance_in_api_response():
+    """Regression: to_site_profile() must round-trip approved_visual_guidance.
+
+    The panels (sources_panel/queue_panel) read the field straight from the
+    store and always looked correct, which hid a real bug: to_site_profile()
+    -- used by update_site_profile's and list_site_profiles' own ActionResult
+    payloads -- silently dropped approved_visual_guidance, so any external
+    caller (e.g. Brand Strategy Hub relaying a handoff) saw {} back even
+    though the write itself succeeded.
+    """
+    ctx = MockContext()
+    await m.create_site_profile(
+        ctx, CreateSiteProfileParams(site_id="roundtrip.example", domain="roundtrip.example")
+    )
+    guidance = _approved_visual_guidance()
+    from schemas import UpdateSiteProfileParams, ListSiteProfilesParams
+
+    update_result = await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="roundtrip.example", approved_visual_guidance=guidance)
+    )
+    assert update_result.status == "success"
+    assert update_result.data.approved_visual_guidance.get("profile_id") == guidance["profile_id"]
+    assert update_result.data.approved_visual_guidance.get("snapshot_hash") == guidance["snapshot_hash"]
+
+    listed = await m.list_site_profiles(ctx, ListSiteProfilesParams())
+    profile = next(p for p in listed.data.items if p.site_id == "roundtrip.example")
+    assert profile.approved_visual_guidance.get("profile_id") == guidance["profile_id"]
+    assert profile.approved_visual_guidance.get("vbs_revision") == guidance["vbs_revision"]
+
+
+@pytest.mark.asyncio
 async def test_queue_panel_labels_current_and_stale_approved_visual_baselines():
     from schemas import UpdateSiteProfileParams
     ctx = MockContext()

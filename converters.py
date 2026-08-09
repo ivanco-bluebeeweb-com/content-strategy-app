@@ -179,6 +179,7 @@ def to_site_profile(d) -> SiteProfile:
         cta_default=data.get("cta_default", ""),
         cta_default_i18n=data.get("cta_default_i18n", {}),
         external_sources_i18n=data.get("external_sources_i18n", {}),
+        approved_visual_guidance=data.get("approved_visual_guidance", {}),
     )
 
 

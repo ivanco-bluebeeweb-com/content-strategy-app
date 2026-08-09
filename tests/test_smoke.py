@@ -187,7 +187,7 @@ async def test_brief_panel_shows_unified_readonly_handoff_review_for_writer_and_
     assert "Media Studio" in rendered
     # Shared approval provenance (profile + VBS revisions, snapshot hash).
     assert "Profile r2" in rendered
-    assert "VBS r4" in rendered
+    assert "Visual Brand System (VBS) r4" in rendered
     assert "sha256:approved-basis" in rendered
     # Explicit generation boundary and Media's provider policy.
     assert "does not generate images" in rendered
@@ -634,7 +634,7 @@ async def test_brief_panel_exposes_read_only_media_handoff_for_approved_visual_g
     assert "build_media_brief_handoff" in rendered
     assert "Third-party first; Magnific only after technical failure" in rendered
     assert "Profile r2" in rendered
-    assert "VBS r4" in rendered
+    assert "Visual Brand System (VBS) r4" in rendered
     assert "sha256:approved-basis" in rendered
     assert "does not generate images" in rendered
 

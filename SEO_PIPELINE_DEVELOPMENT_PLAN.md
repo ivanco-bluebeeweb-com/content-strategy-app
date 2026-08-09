@@ -175,7 +175,21 @@ A Brief shows a compact read-only handoff review:
 - No asset generation or upload is introduced.
 - Regression coverage protects data minimisation and stale fail-closed behaviour.
 
-**Status:** `PLANNED`.
+**Status:** `LIVE-IMPLEMENTED — 2026-08-09`
+
+The old Media-only handoff block on the Image requirements card was replaced
+by one unified read-only review naming both downstream consumers: "→ Article
+Writer" (readiness + boundary text) and "→ Media Studio" (readiness +
+provider policy), sitting under the same shared approval provenance
+(visual intent, style direction, Profile/VBS revision, snapshot hash). The
+existing Build/Refresh Form is unchanged, just relocated under the Media
+section it belongs to. No new action, no schema change. 56/56 tests pass
+(one P0-B test updated for the restructured copy, one new P0-C test asserts
+both sections + provenance + boundary + provider policy render together).
+imperal validate: 0 errors, 0 warnings. Committed `d009b74`, deployed
+`d009b74d`. Live check: same brief as before
+(**Editorial Queue → "рекуператор для квартиры" → Brief**) now shows one
+card with both "→ Article Writer" and "→ Media Studio" sections.
 
 ---
 

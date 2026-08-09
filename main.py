@@ -1884,6 +1884,11 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
                     )],
                 )
             )
+            writer_status = (
+                "Writer handoff: ready — visual guidance will be included"
+                if handoff_available
+                else "Writer handoff: visual guidance excluded — baseline stale, refresh above first"
+            )
             image_children += [
                 ui.Text("Approved visual guidance is attached · read-only", variant="caption"),
                 ui.KeyValue(columns=1, items=[
@@ -1896,6 +1901,13 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
                 handoff_control,
                 ui.Text(
                     "This creates no media package and does not generate images.",
+                    variant="caption",
+                ),
+                ui.Divider(),
+                ui.Text(writer_status, variant="caption"),
+                ui.Text(
+                    "Article Writer readiness is independent of the Media Studio handoff above: "
+                    "a stale baseline is omitted from the Writer brief the same way it blocks Media.",
                     variant="caption",
                 ),
             ]

@@ -131,6 +131,37 @@ async def test_queue_panel_labels_current_and_stale_approved_visual_baselines():
 
 
 @pytest.mark.asyncio
+async def test_brief_panel_shows_writer_handoff_readiness_independent_of_media():
+    """P0-B: the Brief screen must say whether Article Writer will actually
+    receive the visual guidance, not just whether Media Studio's handoff
+    button is available -- these are two different downstream consumers of
+    the same baseline and can diverge (see build_writer_brief, which drops
+    stale guidance from the Writer payload the same way Media does)."""
+    from schemas import UpdateSiteProfileParams
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
+    guidance = _approved_visual_guidance()
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
+
+    current_rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
+    assert "Writer handoff: ready" in current_rendered
+
+    updated_guidance = _approved_visual_guidance()
+    updated_guidance["profile_revision"] = 3
+    updated_guidance["snapshot_hash"] = "sha256:new-approved-basis"
+    await m.update_site_profile(
+        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=updated_guidance)
+    )
+
+    stale_rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
+    assert "Writer handoff: visual guidance excluded — baseline stale" in stale_rendered
+
+
+@pytest.mark.asyncio
 async def test_content_calendar_reports_current_and_stale_visual_baseline_without_guidance_payload():
     from schemas import BuildContentCalendarParams, GetContentCalendarParams, UpdateSiteProfileParams
     ctx = MockContext()

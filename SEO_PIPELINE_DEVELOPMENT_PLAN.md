@@ -141,7 +141,17 @@ In **Content Strategy Hub → Brief**:
 - `current` and `stale` states have UI regression tests.
 - Build / validation / push pass.
 
-**Status:** `PLANNED — begins after P0-A`.
+**Status:** `LIVE-IMPLEMENTED — 2026-08-09`
+
+Implemented directly (no separate UI spike needed: same brief_panel code path
+already proven live in P0-A, same handoff_available flag reused, zero new
+schema/query). Verified: 55/55 tests pass, imperal validate 0 errors/0
+warnings, committed (`04b6a45`), pushed, deployed (`04b6a453`). Live check:
+open **Content Strategy Hub → Editorial Queue → "рекуператор для квартиры"**
+→ Brief → Image requirements card now additionally shows
+`Writer handoff: ready — visual guidance will be included` beneath the
+existing Media Studio handoff control, since this brief's baseline is
+current as of P0-A.
 
 ---
 

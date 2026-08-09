@@ -35,29 +35,44 @@ def guess_intent(query: str) -> str:
     return "informational"
 
 
-def decide_image_text_policy(search_intent: str, prohibited_patterns: list | None = None) -> str:
+def decide_image_text_policy(
+    search_intent: str, prohibited_patterns: list | None = None, candidate_text: str = "",
+) -> tuple[str, str]:
     """Content Strategy's own signal into the image prompt's in-image-text
     instruction -- the actual link this app was missing between "what kind
     of article is this" and "should Media Studio's prompt allow legible
-    text baked into the picture".
+    text baked into the picture, and with WHAT text".
 
-    Default is 'no_text': a clean photographic/illustrative image, safest
-    for most articles and cheapest to get right from an image model.
+    Returns (text_policy, image_text) -- always one of two explicit shapes,
+    never a vague "maybe":
+    - ("no_text", "") -- a clean photographic/illustrative image, safest
+      for most articles and the default for everything below.
+    - ("allow_text", "<exact words>") -- ONLY when there is real wording to
+      hand the image model. Media Studio's own contract (see its
+      MEDIA_INVALID_TEXT_POLICY validation) rejects 'allow_text' without
+      actual text, on purpose: an image prompt can never just say "some
+      text is fine", it must say either "no text" or the specific text.
+
     'commercial' intent (buy/price/cost/quote-type queries -- see
     guess_intent's own hint list) is the one case where legible in-image
-    text (a price tag, a comparison label, a plan name) plausibly helps the
-    reader, so it opts into 'allow_text'.
+    text (a price tag, a comparison label, a CTA phrase) plausibly helps
+    the reader -- but ONLY if `candidate_text` (the brief's own CTA goal,
+    passed in by the caller) is actually non-empty. Commercial intent with
+    no real candidate text stays 'no_text' rather than inventing wording.
 
     prohibited_patterns is the approved VBS/Visual Profile's own forbidden-
     pattern list (Brand Strategy Hub); if ANY entry mentions "text", that
     approval-gated brand constraint always wins over the intent heuristic
-    and forces 'no_text' -- Content Strategy has no authority to override
-    an approved brand guardrail.
+    and forces ('no_text', '') -- Content Strategy has no authority to
+    override an approved brand guardrail.
     """
     for pattern in (prohibited_patterns or []):
         if "text" in str(pattern).lower():
-            return "no_text"
-    return "allow_text" if search_intent == "commercial" else "no_text"
+            return "no_text", ""
+    text = candidate_text.strip()
+    if search_intent == "commercial" and text:
+        return "allow_text", text
+    return "no_text", ""
 
 
 def cluster_label(query: str) -> str:
@@ -145,6 +160,7 @@ def to_brief(d) -> ArticleBrief:
         differentiation_notes=data.get("differentiation_notes", ""),
         image_requirements=data.get("image_requirements", []),
         text_policy=data.get("text_policy", "no_text"),
+        image_text=data.get("image_text", ""),
         approved_visual_guidance=data.get("approved_visual_guidance", {}),
         key_action_page_url=data.get("key_action_page_url", ""),
         key_action_page_language=data.get("key_action_page_language", ""),

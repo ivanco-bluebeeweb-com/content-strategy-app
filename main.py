@@ -966,9 +966,10 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         scored.sort(key=lambda pair: pair[0], reverse=True)
         internal_link_targets = [link for _, link in scored[:3] if link]
 
-    text_policy = _decide_image_text_policy(
+    text_policy, image_text = _decide_image_text_policy(
         opp.get("intent", "informational"),
         profile.get("approved_visual_guidance", {}).get("prohibited_patterns", []),
+        candidate_text=localized_cta,
     )
 
     brief_doc = await ctx.store.create(
@@ -997,6 +998,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "differentiation_notes": "",
             "image_requirements": image_requirements,
             "text_policy": text_policy,
+            "image_text": image_text,
             "approved_visual_guidance": profile.get("approved_visual_guidance", {}),
             "status": "brief_ready",
         },
@@ -1302,7 +1304,9 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
     style_parts = [guidance.get("style_direction", "")]
     if prohibited:
         style_parts.append("Avoid: " + "; ".join(prohibited))
-    text_policy = _decide_image_text_policy(brief.get("search_intent", ""), prohibited)
+    text_policy, image_text = _decide_image_text_policy(
+        brief.get("search_intent", ""), prohibited, candidate_text=brief.get("cta_goal", ""),
+    )
     handoff = MediaBriefHandoff(
         id=f"media-handoff-{brief_doc.id}",
         title=f"Media brief handoff: {brief.get('working_title', '')}",
@@ -1319,6 +1323,7 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
         model="auto",
         style_direction=" ".join(part for part in style_parts if part),
         text_policy=text_policy,
+        image_text=image_text,
         source_brief_id=brief_doc.id,
         approved_visual_profile_id=guidance["profile_id"],
         approved_visual_profile_revision=guidance["profile_revision"],
@@ -1866,7 +1871,11 @@ async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
             )
         )
         visual_guidance = brief.get("approved_visual_guidance", {})
-        text_policy_label = "Allow legible text in image" if brief.get("text_policy") == "allow_text" else "No embedded text in image"
+        image_text = brief.get("image_text", "")
+        if brief.get("text_policy") == "allow_text" and image_text:
+            text_policy_label = f'Render this text in the image: "{image_text}"'
+        else:
+            text_policy_label = "No embedded text in image"
         image_children = [
             ui.Markdown(content=_image_reqs_markdown(brief.get("image_requirements", []))),
             ui.Markdown(content=f"**In-image text policy:** {text_policy_label} (`{brief.get('text_policy', 'no_text')}`)"),

@@ -396,21 +396,36 @@ async def test_update_queue_status_happy_and_missing():
 
 @pytest.mark.asyncio
 async def test_decide_image_text_policy_defaults_to_no_text():
+    """No candidate_text at all -- stays text-free regardless of intent."""
     from converters import decide_image_text_policy
-    assert decide_image_text_policy("informational") == "no_text"
-    assert decide_image_text_policy("navigational") == "no_text"
+    assert decide_image_text_policy("informational") == ("no_text", "")
+    assert decide_image_text_policy("navigational") == ("no_text", "")
+    assert decide_image_text_policy("commercial") == ("no_text", "")
 
 
 @pytest.mark.asyncio
-async def test_decide_image_text_policy_allows_text_for_commercial_intent():
+async def test_decide_image_text_policy_allows_text_for_commercial_intent_with_real_wording():
+    """Commercial intent PLUS actual candidate text -> allow_text with the
+    exact words carried through, never a vague 'text is fine' with nothing
+    concrete to render."""
     from converters import decide_image_text_policy
-    assert decide_image_text_policy("commercial") == "allow_text"
+    assert decide_image_text_policy("commercial", candidate_text="Book a free quote") == (
+        "allow_text", "Book a free quote",
+    )
+
+
+@pytest.mark.asyncio
+async def test_decide_image_text_policy_non_commercial_intent_ignores_candidate_text():
+    from converters import decide_image_text_policy
+    assert decide_image_text_policy("informational", candidate_text="Book a free quote") == ("no_text", "")
 
 
 @pytest.mark.asyncio
 async def test_decide_image_text_policy_approved_no_text_pattern_overrides_commercial_intent():
     from converters import decide_image_text_policy
-    assert decide_image_text_policy("commercial", ["No embedded text or logos"]) == "no_text"
+    assert decide_image_text_policy(
+        "commercial", ["No embedded text or logos"], candidate_text="Book a free quote",
+    ) == ("no_text", "")
 
 
 @pytest.mark.asyncio
@@ -425,12 +440,30 @@ async def test_create_brief_sets_no_text_policy_for_informational_query():
 
 @pytest.mark.asyncio
 async def test_create_brief_sets_allow_text_policy_for_commercial_query():
+    """Commercial intent + a real CTA on the site profile -> allow_text with
+    the actual CTA wording carried through as image_text -- never allow_text
+    with nothing concrete to render."""
     ctx = MockContext()
     queue_item_id, brief_id = await _site_with_brief_ready_queue_item(
-        ctx, query="security services chisinau"
+        ctx, query="security services chisinau", cta_default="Get a free security audit",
     )
     brief_doc = await ctx.store.get("article_briefs", brief_id)
     assert brief_doc.data["text_policy"] == "allow_text"
+    assert brief_doc.data["image_text"] == "Get a free security audit"
+
+
+@pytest.mark.asyncio
+async def test_create_brief_commercial_query_without_real_cta_stays_no_text():
+    """Commercial intent alone is not enough -- without a real candidate
+    text to render, the brief must stay text-free rather than invent
+    wording for the image model."""
+    ctx = MockContext()
+    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(
+        ctx, query="security services chisinau",
+    )
+    brief_doc = await ctx.store.get("article_briefs", brief_id)
+    assert brief_doc.data["text_policy"] == "no_text"
+    assert brief_doc.data["image_text"] == ""
 
 
 @pytest.mark.asyncio
@@ -458,10 +491,12 @@ async def test_build_media_brief_handoff_carries_text_policy_and_brand_override_
     assert handoff.data.text_policy == "no_text"
 
 
-async def _site_with_brief_ready_queue_item(ctx, query="security services chisinau"):
+async def _site_with_brief_ready_queue_item(ctx, query="security services chisinau", cta_default=""):
     """Shared setup: profile -> opportunity -> brief -> queue item at brief_ready."""
     await m.create_site_profile(
-        ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md", brand_name="G4S")
+        ctx, CreateSiteProfileParams(
+            site_id="g4s.md", domain="g4s.md", brand_name="G4S", cta_default=cta_default,
+        )
     )
     await _seed_audit(ctx, "g4s.md")
     disc = await m.discover_opportunities(

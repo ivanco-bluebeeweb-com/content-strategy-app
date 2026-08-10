@@ -2455,6 +2455,16 @@
             "title": "Image Requirements",
             "type": "array"
           },
+          "text_policy": {
+            "default": "no_text",
+            "title": "Text Policy",
+            "type": "string"
+          },
+          "image_text": {
+            "default": "",
+            "title": "Image Text",
+            "type": "string"
+          },
           "approved_visual_guidance": {
             "additionalProperties": true,
             "default": {},
@@ -3326,6 +3336,16 @@
             "title": "Image Requirements",
             "type": "array"
           },
+          "text_policy": {
+            "default": "no_text",
+            "title": "Text Policy",
+            "type": "string"
+          },
+          "image_text": {
+            "default": "",
+            "title": "Image Text",
+            "type": "string"
+          },
           "approved_visual_guidance": {
             "additionalProperties": true,
             "default": {},
@@ -3510,6 +3530,16 @@
           "style_direction": {
             "default": "",
             "title": "Style Direction",
+            "type": "string"
+          },
+          "text_policy": {
+            "default": "no_text",
+            "title": "Text Policy",
+            "type": "string"
+          },
+          "image_text": {
+            "default": "",
+            "title": "Image Text",
             "type": "string"
           },
           "provider_policy": {
@@ -4044,6 +4074,16 @@
                 },
                 "title": "Image Requirements",
                 "type": "array"
+              },
+              "text_policy": {
+                "default": "no_text",
+                "title": "Text Policy",
+                "type": "string"
+              },
+              "image_text": {
+                "default": "",
+                "title": "Image Text",
+                "type": "string"
               },
               "approved_visual_guidance": {
                 "additionalProperties": true,

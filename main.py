@@ -852,6 +852,15 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             f"Cannot resolve a key action page for '{opp.get('site_id', '')}': WordPress Hub page inventory failed ({type(exc).__name__}: {exc}).",
             retryable=True,
         )
+    # WordPress's REST API never actually exposes Polylang's per-page
+    # language on /wp/v2/pages (same gap run_content_audit already works
+    # around for posts) -- every page comes back with lang="". Apply the
+    # same deterministic script-only fallback here, or resolve_key_action_page
+    # would reject every real action page on every site for a language
+    # mismatch that was never real.
+    for page in action_pages or []:
+        if not (page.get("lang") or "").strip():
+            page["lang"] = _detect_language_fallback(page.get("title", ""), page.get("content", ""))
     action_page, action_language_priority = resolve_key_action_page(
         action_pages or [], lang_key, site_languages,
     )

@@ -1273,6 +1273,32 @@ async def test_create_brief_requires_real_action_page_and_verified_external_sour
 
 
 @pytest.mark.asyncio
+async def test_create_brief_resolves_action_page_when_wordpress_reports_no_lang():
+    """WordPress's own REST API never actually exposes Polylang's per-page
+    language on /wp/v2/pages -- every real page comes back with lang="".
+    create_brief must fall back to detecting the script (Cyrillic vs Latin)
+    from the page's own title/content, exactly like run_content_audit
+    already does for posts, instead of rejecting every real action page."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="climtec.md", domain="climtec.md", target_languages=["ru", "ro"],
+        external_sources_i18n={"ru": ["https://source.example/ru"]},
+    ))
+    await _seed_audit(ctx, "climtec.md")
+    ctx.extensions.register("wordpress-hub", "list_pages_full", _mock_action_pages([
+        {"title": "Контакты", "slug": "contact-ru", "link": "https://climtec.md/ru/contact", "content": "", "lang": ""},
+        {"title": "Contacte", "slug": "contacte", "link": "https://climtec.md/contacte", "content": "", "lang": ""},
+    ]))
+    disc = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md", target_language="ru",
+        queries=[QuerySignal(query="рекуператор тепла", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=disc.data.items[0].id))
+    assert result.status == "success"
+    assert result.data.key_action_page_url == "https://climtec.md/ru/contact"
+
+
+@pytest.mark.asyncio
 async def test_create_brief_selects_article_language_external_source_then_fallback():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(

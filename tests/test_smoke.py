@@ -1325,3 +1325,99 @@ async def test_create_brief_selects_article_language_external_source_then_fallba
     assert result.data.external_link_url == "https://source.example/ro"
     assert result.data.external_link_language == "ro"
     assert result.data.external_link_language_priority == ["ru", "ro"]
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Sidebar "Projects" section — existing site profiles surfaced as clickable
+# projects, with an "Add new project" Dialog, and a center-panel brief
+# catalogue per project (mirrors Media Hub's own packages catalogue view).
+# ──────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_queue_panel_shows_projects_section_with_existing_sites():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
+    ))
+    node = await m.queue_panel(ctx)
+    rendered = repr(node)
+    assert "Projects" in rendered
+    assert "G4S Moldova" in rendered
+    assert "Add new project" in rendered
+
+
+@pytest.mark.asyncio
+async def test_queue_panel_projects_section_empty_state():
+    ctx = MockContext()
+    node = await m.queue_panel(ctx)
+    rendered = repr(node)
+    assert "Projects" in rendered
+    assert "No projects yet" in rendered
+    assert "Add new project" in rendered
+
+
+@pytest.mark.asyncio
+async def test_queue_panel_project_click_routes_to_brief_panel_with_site_id():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    rendered = repr(await m.queue_panel(ctx))
+    assert "'site_id': 'g4s.md'" in rendered
+    assert "__panel__brief" in rendered
+
+
+@pytest.mark.asyncio
+async def test_queue_panel_add_project_button_opens_dialog_on_demand():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+
+    closed_rendered = repr(await m.queue_panel(ctx))
+    assert "Dialog" not in closed_rendered
+
+    open_rendered = repr(await m.queue_panel(ctx, show_add_project="1"))
+    assert "Dialog" in open_rendered
+    assert "Add new project" in open_rendered
+    assert "create_site_profile" in open_rendered
+
+
+@pytest.mark.asyncio
+async def test_brief_panel_shows_project_briefs_catalog_when_site_id_given_without_queue_item():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
+    ))
+    await _seed_audit(ctx, "g4s.md")
+    disc = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services chisinau", clicks=10, impressions=200, ctr=0.05, avg_position=8.0)],
+    ))
+    await m.create_brief(ctx, CreateBriefParams(opportunity_id=disc.data.items[0].id))
+
+    rendered = repr(await m.brief_panel(ctx, site_id="g4s.md"))
+    assert "G4S Moldova" in rendered
+    assert "Briefs (1)" in rendered
+
+
+@pytest.mark.asyncio
+async def test_brief_panel_project_catalog_empty_state():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    rendered = repr(await m.brief_panel(ctx, site_id="g4s.md"))
+    assert "Briefs (0)" in rendered
+    assert "No briefs yet for this project" in rendered
+
+
+@pytest.mark.asyncio
+async def test_brief_panel_with_neither_queue_item_nor_site_shows_generic_empty_state():
+    ctx = MockContext()
+    node = await m.brief_panel(ctx)
+    rendered = repr(node)
+    assert "Select a project" in rendered
+
+
+@pytest.mark.asyncio
+async def test_create_site_profile_refreshes_queue_and_brief_panels():
+    ctx = MockContext()
+    result = await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    assert "queue" in result.refresh_panels
+    assert "brief" in result.refresh_panels
+    assert "sources" in result.refresh_panels

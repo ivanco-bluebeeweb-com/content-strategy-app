@@ -267,7 +267,7 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
     return ActionResult.success(
         _to_site_profile(doc),
         summary=f"Site profile '{params.site_id}' created.",
-        refresh_panels=["sources"],
+        refresh_panels=["sources", "queue", "brief"],
     )
 
 
@@ -1725,6 +1725,69 @@ async def _fetch_queue(ctx, site_id: str = "") -> list:
     return items
 
 
+async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINode:
+    """'Projects' = the site profiles already registered (our connected
+    sites). Shown as a clickable list at the top of the sidebar so a
+    project is always one click away -- no separate navigation needed.
+    Clicking a project routes the center panel to that project's brief
+    catalogue (brief_panel(site_id=...)). 'Add new project' opens a
+    ui.Dialog (per explicit request) instead of the plain inline Form the
+    Sites panel already offers -- Input children carrying param_name are
+    merged into on_confirm's call params the same way ui.Form merges its
+    own children, so the dialog needs no separate submit button."""
+    site_page = await ctx.store.query("site_profiles", limit=50)
+    profiles = list(site_page.data)
+
+    briefs_page = await ctx.store.query("article_briefs", limit=1000)
+    brief_count_by_site: dict[str, int] = {}
+    for d in briefs_page.data:
+        sid = d.data.get("site_id", "")
+        brief_count_by_site[sid] = brief_count_by_site.get(sid, 0) + 1
+
+    project_items = [
+        ui.ListItem(
+            id=d.data.get("site_id", d.id),
+            title=d.data.get("brand_name") or d.data.get("site_id", d.id),
+            subtitle=d.data.get("domain", ""),
+            meta=f"{brief_count_by_site.get(d.data.get('site_id', ''), 0)} briefs",
+            selected=(d.data.get("site_id") == site_id and bool(site_id)),
+            on_click=ui.Call("__panel__brief", site_id=d.data.get("site_id", d.id)),
+        )
+        for d in profiles
+    ]
+
+    add_project_button = ui.Button(
+        "➕ Add new project", variant="secondary", size="sm", full_width=True,
+        on_click=ui.Call("__panel__queue", site_id=site_id, show_add_project="1"),
+    )
+
+    children: list[ui.UINode] = [add_project_button]
+    if project_items:
+        children.append(ui.List(items=project_items, searchable=True))
+    else:
+        children.append(ui.Empty(message="No projects yet — add one to get started.", icon="🗂️"))
+
+    if show_add_project:
+        children.append(
+            ui.Dialog(
+                title="Add new project",
+                content=ui.Stack(
+                    direction="v", gap=2,
+                    children=[
+                        ui.Input(param_name="site_id", placeholder="Site id, e.g. g4s.md"),
+                        ui.Input(param_name="domain", placeholder="Domain, e.g. g4s.md"),
+                        ui.Input(param_name="brand_name", placeholder="Brand name (optional)"),
+                    ],
+                ),
+                confirm_label="Create project",
+                cancel_label="Cancel",
+                on_confirm=ui.Call("create_site_profile"),
+            )
+        )
+
+    return ui.Card(title="Projects", content=ui.Stack(direction="v", gap=2, children=children))
+
+
 @ext.panel(
     "queue",
     slot="left",
@@ -1734,7 +1797,8 @@ async def _fetch_queue(ctx, site_id: str = "") -> list:
     min_width=240,
     max_width=460,
 )
-async def queue_panel(ctx, site_id: str = "", **kwargs) -> object:
+async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwargs) -> object:
+    projects_card = await _projects_section(ctx, site_id, show_add_project)
     docs = await _fetch_queue(ctx, site_id)
 
     site_page = await ctx.store.query("site_profiles", limit=50)
@@ -1766,6 +1830,7 @@ async def queue_panel(ctx, site_id: str = "", **kwargs) -> object:
             direction="v",
             gap=3,
             children=[
+                projects_card,
                 sites_button,
                 filter_row,
                 ui.Empty(
@@ -1807,6 +1872,7 @@ async def queue_panel(ctx, site_id: str = "", **kwargs) -> object:
         direction="v",
         gap=3,
         children=[
+            projects_card,
             sites_button,
             filter_row,
             ui.List(items=items, searchable=True),
@@ -1827,6 +1893,75 @@ def _image_reqs_markdown(reqs: list) -> str:
     return "\n".join(f"- {r}" for r in reqs)
 
 
+_BRIEF_STATUS_ORDER = ["idea", "brief_ready", "draft_requested", "draft_ready", "approved", "published"]
+
+
+def _brief_status_breakdown(rows: list[dict]) -> str:
+    """'3 brief ready, 1 approved' -- a live summary of every state a
+    brief in this project can be in, mirroring Media Hub's own
+    _status_breakdown pattern for its packages catalogue."""
+    if not rows:
+        return "No briefs yet."
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = row.get("status") or "idea"
+        counts[status] = counts.get(status, 0) + 1
+    parts = [f"{counts.pop(s)} {_STATUS_LABEL.get(s, s)}" for s in _BRIEF_STATUS_ORDER if s in counts]
+    parts += [f"{n} {_STATUS_LABEL.get(s, s)}" for s, n in counts.items()]
+    return ", ".join(parts)
+
+
+async def _briefs_catalog_view(ctx, site_id: str) -> ui.UINode:
+    """Central catalogue of one project's briefs. Visually mirrors Media
+    Hub's _packages_view: a header carrying a live count + status
+    breakdown, then a searchable ui.List over the full set already
+    loaded -- just scoped to article_briefs for this one site_id instead
+    of media packages."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)
+    profile = profile_page.data[0].data if profile_page.data else {}
+    project_label = profile.get("brand_name") or site_id
+
+    briefs_page = await ctx.store.query(
+        "article_briefs", where={"site_id": site_id}, order_by="-created_at", limit=200
+    )
+    rows = [dict(d.data, id=d.id) for d in briefs_page.data]
+    total = len(rows)
+
+    # Map brief_id -> queue_item_id so clicking a brief opens its full
+    # existing detail view (brief_panel's queue_item_id branch), instead
+    # of duplicating that detail rendering here.
+    q_page = await ctx.store.query("queue_items", where={"site_id": site_id}, limit=500)
+    queue_item_by_brief_id = {
+        d.data.get("brief_id"): d.id for d in q_page.data if d.data.get("brief_id")
+    }
+
+    children: list[ui.UINode] = [
+        ui.Header(text=f"{project_label} · Briefs ({total})", level=2,
+                   subtitle=_brief_status_breakdown(rows)),
+    ]
+
+    if not rows:
+        children.append(ui.Empty(message="No briefs yet for this project.", icon="📝"))
+    else:
+        items = [
+            ui.ListItem(
+                id=row["id"],
+                title=row.get("working_title") or row.get("primary_query") or "(untitled brief)",
+                subtitle=row.get("target_language", "") or "—",
+                meta=_STATUS_LABEL.get(row.get("status", "idea"), row.get("status", "idea")),
+                badge=ui.Badge(
+                    _STATUS_LABEL.get(row.get("status", "idea"), row.get("status", "idea")),
+                    color=_STATUS_COLOR.get(row.get("status", "idea"), "gray"),
+                ),
+                on_click=ui.Call("__panel__brief", queue_item_id=queue_item_by_brief_id.get(row["id"], "")),
+            )
+            for row in rows
+        ]
+        children.append(ui.List(items=items, searchable=True))
+
+    return ui.Stack(children=children, gap=4)
+
+
 @ext.panel(
     "brief",
     slot="center",
@@ -1834,9 +1969,11 @@ def _image_reqs_markdown(reqs: list) -> str:
     icon="📝",
     center_overlay=True,
 )
-async def brief_panel(ctx, queue_item_id: str = "", **kwargs) -> object:
+async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", **kwargs) -> object:
     if not queue_item_id:
-        return ui.Empty(message="Select a queue item to see its detail.", icon="📝")
+        if site_id:
+            return await _briefs_catalog_view(ctx, site_id)
+        return ui.Empty(message="Select a project to see its briefs.", icon="📝")
 
     q_doc = await ctx.store.get("queue_items", queue_item_id)
     if not q_doc:

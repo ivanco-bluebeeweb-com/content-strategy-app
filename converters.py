@@ -208,6 +208,11 @@ def to_queue_item(d) -> QueueItem:
         scheduled_date=data.get("scheduled_date", ""),
         external_project_id=data.get("external_project_id", ""),
         external_article_id=data.get("external_article_id", ""),
+        fact_checked=data.get("fact_checked", False),
+        fact_checked_by=data.get("fact_checked_by", ""),
+        fact_checked_at=data.get("fact_checked_at", ""),
+        edited_by=data.get("edited_by", ""),
+        edited_at=data.get("edited_at", ""),
     )
 
 

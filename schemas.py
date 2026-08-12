@@ -175,6 +175,11 @@ class QueueItem(sdl.Entity):
     scheduled_date: str = ""  # YYYY-MM-DD — set by build_content_calendar
     external_project_id: str = ""  # Article Writer project id, once linked
     external_article_id: str = ""  # Article Writer article id, once linked
+    fact_checked: bool = False  # a named human has verified factual claims/citations
+    fact_checked_by: str = ""  # real name of the human who fact-checked it
+    fact_checked_at: str = ""
+    edited_by: str = ""  # real name of the human editor who reviewed/edited the draft
+    edited_at: str = ""
 
 
 class QueueItemList(sdl.EntityList[QueueItem]):
@@ -246,6 +251,12 @@ class UpdateQueueStatusParams(BaseModel):
     queue_item_id: str = Field(description="UUID of the queue item to update — from list_queue, never invented")
     lifecycle_status: str = Field(description="New status: idea|brief_ready|draft_requested|draft_ready|approved|published")
     published_url: str = Field("", description="Optional published URL, set when lifecycle_status='published'")
+
+
+class RecordEditorialSignoffParams(BaseModel):
+    queue_item_id: str = Field(description="UUID of the queue item to sign off on — from list_queue, never invented")
+    fact_checked_by: str = Field("", description="Real name of the human who fact-checked the draft's claims/citations. Empty = leave fact-check status unchanged.")
+    edited_by: str = Field("", description="Real name of the human editor who reviewed/edited the draft. Empty = leave edit status unchanged.")
 
 
 class CreateSiteProfileParams(BaseModel):

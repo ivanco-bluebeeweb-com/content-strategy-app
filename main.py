@@ -28,6 +28,7 @@ from schemas import (
     GetContentCalendarParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams, UpdateSiteProfileParams,
+    RecordEditorialSignoffParams,
     ArticleBrief, ArticleBriefList, MediaBriefHandoff,
     ContentCalendarEntry, ContentCalendarEntryList,
     Opportunity, OpportunityList,
@@ -1793,6 +1794,17 @@ async def update_queue_status(ctx, params: UpdateQueueStatusParams) -> ActionRes
     doc = await ctx.store.get("queue_items", params.queue_item_id)
     if not doc:
         return ActionResult.error(f"Queue item '{params.queue_item_id}' not found.", retryable=False)
+    # Editorial integrity gate: an article must never reach "published" without
+    # a named human having fact-checked it first -- mirrors the E-E-A-T
+    # author gate in create_brief. This is deliberately about status alone;
+    # it never blocks earlier lifecycle steps (idea/brief_ready/draft_*).
+    if params.lifecycle_status == "published" and not doc.data.get("fact_checked"):
+        return ActionResult.error(
+            "FACT_CHECK_REQUIRED: this queue item has not been fact-checked by a "
+            "named human yet. Call record_editorial_signoff with fact_checked_by "
+            "before marking it published.",
+            retryable=False,
+        )
     update = {"lifecycle_status": params.lifecycle_status}
     if params.published_url:
         update["published_url"] = params.published_url
@@ -1801,6 +1813,49 @@ async def update_queue_status(ctx, params: UpdateQueueStatusParams) -> ActionRes
     return ActionResult.success(
         _to_queue_item(doc),
         summary=f"Queue item moved to '{params.lifecycle_status}'.",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
+    "record_editorial_signoff",
+    description=(
+        "Record that a real, named human has fact-checked and/or edited a "
+        "queue item's draft. fact_checked_by is required before "
+        "update_queue_status can move that item to 'published' -- this is "
+        "the editorial-lifecycle counterpart to the E-E-A-T author gate on "
+        "create_brief. Pass only the field(s) being recorded now."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["update:queue_item"],
+    event="editorial_signoff_recorded",
+    id_projection="queue_item_id",
+    data_model=QueueItem,
+)
+async def record_editorial_signoff(ctx, params: RecordEditorialSignoffParams) -> ActionResult:
+    """Stamp fact-check and/or edit sign-off onto a queue item."""
+    doc = await ctx.store.get("queue_items", params.queue_item_id)
+    if not doc:
+        return ActionResult.error(f"Queue item '{params.queue_item_id}' not found.", retryable=False)
+    if not params.fact_checked_by and not params.edited_by:
+        return ActionResult.error(
+            "Give at least one of fact_checked_by or edited_by.", retryable=False,
+        )
+    now = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+    update = {}
+    if params.fact_checked_by:
+        update["fact_checked"] = True
+        update["fact_checked_by"] = params.fact_checked_by
+        update["fact_checked_at"] = now
+    if params.edited_by:
+        update["edited_by"] = params.edited_by
+        update["edited_at"] = now
+    await ctx.store.update("queue_items", params.queue_item_id, update)
+    doc.data.update(update)
+    return ActionResult.success(
+        _to_queue_item(doc),
+        summary=f"Editorial sign-off recorded for queue item '{params.queue_item_id}'.",
         refresh_panels=["queue"],
     )
 
@@ -2147,6 +2202,8 @@ async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwar
                     "current" if _approved_visual_baseline_is_current(brief_guidance, current_guidance) else "stale"
                 )
                 subtitle = f"{subtitle} · Visual baseline: {baseline_state}"
+        if status in ("draft_ready", "approved") and not data.get("fact_checked"):
+            subtitle = f"{subtitle} · ⚠️ fact-check needed before publish"
         items.append(
             ui.ListItem(
                 id=d.id,

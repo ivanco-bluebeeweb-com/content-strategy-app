@@ -19,6 +19,7 @@ from schemas import (
     CreateContentAuthorParams, ListContentAuthorsParams, BuildWriterBriefParams,
     UpdateSiteProfileParams,
     ContentPerformanceSignal, TrackContentDecayParams, GetContentDecayParams,
+    RecordEditorialSignoffParams,
 )
 
 
@@ -1642,3 +1643,73 @@ async def test_purge_pipeline_data_removes_content_decay_records():
     result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
     assert result.status == "success"
     assert result.data.decay_readings_removed == 2  # 1 reading + 1 report
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 3: editorial lifecycle — fact-check/edit signoff gate
+# ──────────────────────────────────────────────────────────────────────────
+
+async def _make_queue_item(ctx, site_id="g4s.md"):
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id=site_id, domain=site_id))
+    await _seed_audit(ctx, site_id)
+    disc = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id=site_id,
+        queries=[QuerySignal(query="security services chisinau", impressions=500, clicks=10, ctr=0.02, avg_position=8.5)],
+    ))
+    await m.create_brief(ctx, CreateBriefParams(opportunity_id=disc.data.items[0].id))
+    from schemas import ListQueueParams
+    queue_result = await m.list_queue(ctx, ListQueueParams(site_id=site_id))
+    return queue_result.data.items[0].id
+
+
+@pytest.mark.asyncio
+async def test_update_queue_status_blocks_publish_without_fact_check():
+    ctx = MockContext()
+    queue_item_id = await _make_queue_item(ctx)
+    result = await m.update_queue_status(ctx, UpdateQueueStatusParams(
+        queue_item_id=queue_item_id, lifecycle_status="published", published_url="https://g4s.md/blog/x",
+    ))
+    assert result.status == "error"
+    assert "FACT_CHECK_REQUIRED" in result.error
+
+
+@pytest.mark.asyncio
+async def test_record_editorial_signoff_then_publish_succeeds():
+    ctx = MockContext()
+    queue_item_id = await _make_queue_item(ctx)
+    signoff = await m.record_editorial_signoff(ctx, RecordEditorialSignoffParams(
+        queue_item_id=queue_item_id, fact_checked_by="Maria Editor", edited_by="Ion Editor",
+    ))
+    assert signoff.status == "success"
+    assert signoff.data.fact_checked is True
+    assert signoff.data.fact_checked_by == "Maria Editor"
+    assert signoff.data.edited_by == "Ion Editor"
+
+    result = await m.update_queue_status(ctx, UpdateQueueStatusParams(
+        queue_item_id=queue_item_id, lifecycle_status="published", published_url="https://g4s.md/blog/x",
+    ))
+    assert result.status == "success"
+    assert result.data.lifecycle_status == "published"
+
+
+@pytest.mark.asyncio
+async def test_record_editorial_signoff_requires_existing_queue_item():
+    ctx = MockContext()
+    result = await m.record_editorial_signoff(ctx, RecordEditorialSignoffParams(
+        queue_item_id="nonexistent", fact_checked_by="Maria Editor",
+    ))
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_record_editorial_signoff_edited_only_does_not_satisfy_fact_check_gate():
+    ctx = MockContext()
+    queue_item_id = await _make_queue_item(ctx)
+    await m.record_editorial_signoff(ctx, RecordEditorialSignoffParams(
+        queue_item_id=queue_item_id, edited_by="Ion Editor",
+    ))
+    result = await m.update_queue_status(ctx, UpdateQueueStatusParams(
+        queue_item_id=queue_item_id, lifecycle_status="published",
+    ))
+    assert result.status == "error"
+    assert "FACT_CHECK_REQUIRED" in result.error

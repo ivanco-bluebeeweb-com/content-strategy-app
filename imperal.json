@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.13",
   "app_id": "content-strategy-app",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "name": "Content Strategy",
   "description": "Plans what to write next for your sites. Discovers content opportunities from Google Search Console data, clusters them into topics, generates structured article briefs (with image requirements for downstream generation), and tracks each idea through an editorial queue from idea to published.",
   "icon": "icon.svg",
@@ -1937,6 +1937,483 @@
           "title"
         ],
         "title": "ContentAuditReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "track_content_decay",
+      "description": "Compare current search-performance signals (clicks/impressions/position for published URLs, typically from Google Search Console's top_queries aggregated by page, or DataForSEO's rank tracking) against each URL's own PREVIOUS reading to surface which existing articles are losing traffic or ranking and need refreshing -- not just which new topics to write. Call this periodically (e.g. monthly) per site; the first call for a URL only sets its baseline.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:content_decay_report"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "$defs": {
+          "ContentPerformanceSignal": {
+            "description": "One URL's performance-over-a-period reading, typically fetched from the\nGoogle Search Console connector (top_queries aggregated by page) or the\nDataForSEO connector (check_serp_ranking / rank history) by the\norchestrator and passed in here. This app does not call other extensions\ndirectly for this \u2014 Webbee chains that connector's output into this\ntool's input, exactly like QuerySignal for discover_opportunities.",
+            "properties": {
+              "url": {
+                "description": "The published page's own URL, matched against existing_content_items",
+                "title": "Url",
+                "type": "string"
+              },
+              "clicks": {
+                "default": 0,
+                "description": "Clicks over the reporting period",
+                "title": "Clicks",
+                "type": "integer"
+              },
+              "impressions": {
+                "default": 0,
+                "description": "Impressions over the reporting period",
+                "title": "Impressions",
+                "type": "integer"
+              },
+              "avg_position": {
+                "default": 0.0,
+                "description": "Average SERP position over the reporting period",
+                "title": "Avg Position",
+                "type": "number"
+              },
+              "period_days": {
+                "default": 28,
+                "description": "Length of the reporting period in days, e.g. 28 for GSC's default window",
+                "title": "Period Days",
+                "type": "integer"
+              },
+              "source": {
+                "default": "gsc",
+                "description": "Where this signal came from: gsc|dataforseo|manual",
+                "title": "Source",
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "title": "ContentPerformanceSignal",
+            "type": "object"
+          }
+        },
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "signals": {
+            "description": "Current-period performance readings for this site's published URLs. Each is compared against the PREVIOUS reading recorded for that same URL (from the last time this was called) to detect decay -- so this must be called periodically (e.g. monthly) for a trend to build up. The first call for a URL only establishes the baseline; it cannot yet show decay.",
+            "items": {
+              "$ref": "#/$defs/ContentPerformanceSignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "TrackContentDecayParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "DecayingContentItem": {
+            "description": "One URL's decay verdict from comparing this reading to its last one.",
+            "properties": {
+              "url": {
+                "default": "",
+                "title": "Url",
+                "type": "string"
+              },
+              "title": {
+                "default": "",
+                "title": "Title",
+                "type": "string"
+              },
+              "previous_clicks": {
+                "default": 0,
+                "title": "Previous Clicks",
+                "type": "integer"
+              },
+              "current_clicks": {
+                "default": 0,
+                "title": "Current Clicks",
+                "type": "integer"
+              },
+              "click_change_pct": {
+                "default": 0.0,
+                "title": "Click Change Pct",
+                "type": "number"
+              },
+              "previous_position": {
+                "default": 0.0,
+                "title": "Previous Position",
+                "type": "number"
+              },
+              "current_position": {
+                "default": 0.0,
+                "title": "Current Position",
+                "type": "number"
+              },
+              "position_change": {
+                "default": 0.0,
+                "title": "Position Change",
+                "type": "number"
+              },
+              "verdict": {
+                "default": "new",
+                "title": "Verdict",
+                "type": "string"
+              },
+              "recommendation": {
+                "default": "",
+                "title": "Recommendation",
+                "type": "string"
+              }
+            },
+            "title": "DecayingContentItem",
+            "type": "object"
+          }
+        },
+        "description": "Result of comparing a site's published URLs' current performance\nagainst their own last recorded reading -- surfaces which articles are\nlosing traffic/ranking so they can be refreshed before they die\nentirely, instead of only ever writing new content.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "tracked_count": {
+            "default": 0,
+            "title": "Tracked Count",
+            "type": "integer"
+          },
+          "decaying_count": {
+            "default": 0,
+            "title": "Decaying Count",
+            "type": "integer"
+          },
+          "improving_count": {
+            "default": 0,
+            "title": "Improving Count",
+            "type": "integer"
+          },
+          "new_count": {
+            "default": 0,
+            "title": "New Count",
+            "type": "integer"
+          },
+          "decaying_items": {
+            "items": {
+              "$ref": "#/$defs/DecayingContentItem"
+            },
+            "title": "Decaying Items",
+            "type": "array"
+          },
+          "needs_doing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needs Doing",
+            "type": "array"
+          },
+          "checked_at": {
+            "default": "",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ContentDecayReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "content_decay_tracked",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "get_content_decay",
+      "description": "Read the most recent content-decay report for a site (track_content_decay's saved result).",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "GetContentDecayParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "DecayingContentItem": {
+            "description": "One URL's decay verdict from comparing this reading to its last one.",
+            "properties": {
+              "url": {
+                "default": "",
+                "title": "Url",
+                "type": "string"
+              },
+              "title": {
+                "default": "",
+                "title": "Title",
+                "type": "string"
+              },
+              "previous_clicks": {
+                "default": 0,
+                "title": "Previous Clicks",
+                "type": "integer"
+              },
+              "current_clicks": {
+                "default": 0,
+                "title": "Current Clicks",
+                "type": "integer"
+              },
+              "click_change_pct": {
+                "default": 0.0,
+                "title": "Click Change Pct",
+                "type": "number"
+              },
+              "previous_position": {
+                "default": 0.0,
+                "title": "Previous Position",
+                "type": "number"
+              },
+              "current_position": {
+                "default": 0.0,
+                "title": "Current Position",
+                "type": "number"
+              },
+              "position_change": {
+                "default": 0.0,
+                "title": "Position Change",
+                "type": "number"
+              },
+              "verdict": {
+                "default": "new",
+                "title": "Verdict",
+                "type": "string"
+              },
+              "recommendation": {
+                "default": "",
+                "title": "Recommendation",
+                "type": "string"
+              }
+            },
+            "title": "DecayingContentItem",
+            "type": "object"
+          }
+        },
+        "description": "Result of comparing a site's published URLs' current performance\nagainst their own last recorded reading -- surfaces which articles are\nlosing traffic/ranking so they can be refreshed before they die\nentirely, instead of only ever writing new content.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "tracked_count": {
+            "default": 0,
+            "title": "Tracked Count",
+            "type": "integer"
+          },
+          "decaying_count": {
+            "default": 0,
+            "title": "Decaying Count",
+            "type": "integer"
+          },
+          "improving_count": {
+            "default": 0,
+            "title": "Improving Count",
+            "type": "integer"
+          },
+          "new_count": {
+            "default": 0,
+            "title": "New Count",
+            "type": "integer"
+          },
+          "decaying_items": {
+            "items": {
+              "$ref": "#/$defs/DecayingContentItem"
+            },
+            "title": "Decaying Items",
+            "type": "array"
+          },
+          "needs_doing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needs Doing",
+            "type": "array"
+          },
+          "checked_at": {
+            "default": "",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ContentDecayReport",
         "type": "object",
         "x-sdl": "entity"
       },
@@ -5237,6 +5714,11 @@
           "authors_removed": {
             "default": 0,
             "title": "Authors Removed",
+            "type": "integer"
+          },
+          "decay_readings_removed": {
+            "default": 0,
+            "title": "Decay Readings Removed",
             "type": "integer"
           },
           "kept_site_ids": {

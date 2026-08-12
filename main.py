@@ -39,6 +39,8 @@ from schemas import (
     SiteCompetitorProfile, SiteCompetitorProfileList,
     AddSiteCompetitorParams, ListSiteCompetitorsParams,
     ContentAuditReport, RunContentAuditParams, GetContentAuditParams,
+    ContentPerformanceSignal, TrackContentDecayParams, DecayingContentItem,
+    ContentDecayReport, GetContentDecayParams,
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
     PurgePipelineDataParams, PurgeResult,
     ContentAuthor, ContentAuthorList, CreateContentAuthorParams, ListContentAuthorsParams,
@@ -616,6 +618,166 @@ async def get_content_audit(ctx, params: GetContentAuditParams) -> ActionResult:
     d = page.data[0]
     report = ContentAuditReport(id=d.id, title=f"Content audit — {params.site_id}", **d.data)
     return ActionResult.success(report, summary=f"Audit for '{params.site_id}' from {d.data.get('audited_at', '?')}.")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Content decay tracking
+#
+# Nothing calls a search-performance connector directly from here -- exactly
+# like discover_opportunities' QuerySignal, the caller fetches fresh
+# GSC/DataForSEO numbers first and passes them in as ContentPerformanceSignal.
+# Each call diffs the new reading against the PREVIOUS one stored for that
+# URL, so decay only becomes visible after at least two periodic calls.
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "track_content_decay",
+    description=(
+        "Compare current search-performance signals (clicks/impressions/position "
+        "for published URLs, typically from Google Search Console's top_queries "
+        "aggregated by page, or DataForSEO's rank tracking) against each URL's "
+        "own PREVIOUS reading to surface which existing articles are losing "
+        "traffic or ranking and need refreshing -- not just which new topics "
+        "to write. Call this periodically (e.g. monthly) per site; the first "
+        "call for a URL only sets its baseline."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:content_decay_report"],
+    event="content_decay_tracked",
+    data_model=ContentDecayReport,
+)
+async def track_content_decay(ctx, params: TrackContentDecayParams) -> ActionResult:
+    """Diff each given URL's current signal against its last stored reading."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"Site profile '{params.site_id}' not found. Create it first with create_site_profile.",
+            retryable=False,
+        )
+
+    title_by_url = {}
+    existing_items_page = await ctx.store.query("existing_content_items", where={"site_id": params.site_id}, limit=500)
+    for d in existing_items_page.data:
+        link = d.data.get("link", "")
+        if link:
+            title_by_url[link] = d.data.get("title", d.data.get("slug", ""))
+
+    decaying_items: list[DecayingContentItem] = []
+    decaying_count = 0
+    improving_count = 0
+    new_count = 0
+
+    for sig in params.signals:
+        prior_page = await ctx.store.query(
+            "content_decay_readings", where={"site_id": params.site_id, "url": sig.url}, limit=1,
+        )
+        prior = prior_page.data[0].data if prior_page.data else None
+
+        if prior is None:
+            verdict = "new"
+            new_count += 1
+            item = DecayingContentItem(
+                url=sig.url, title=title_by_url.get(sig.url, ""),
+                previous_clicks=0, current_clicks=sig.clicks, click_change_pct=0.0,
+                previous_position=0.0, current_position=sig.avg_position, position_change=0.0,
+                verdict=verdict, recommendation="Baseline recorded — decay will show from the next check.",
+            )
+        else:
+            prev_clicks = prior.get("clicks", 0)
+            prev_position = prior.get("avg_position", 0.0)
+            click_change_pct = (
+                ((sig.clicks - prev_clicks) / prev_clicks * 100.0) if prev_clicks > 0
+                else (100.0 if sig.clicks > 0 else 0.0)
+            )
+            position_change = sig.avg_position - prev_position if prev_position > 0 else 0.0
+            if click_change_pct <= -20.0 or (prev_position > 0 and position_change >= 3.0):
+                verdict = "decaying"
+                decaying_count += 1
+                recommendation = (
+                    "Refresh: update facts/data, expand thin sections, re-check internal links and CTA -- "
+                    "this article is losing clicks and/or ranking."
+                )
+            elif click_change_pct >= 20.0 or (prev_position > 0 and position_change <= -3.0):
+                verdict = "improving"
+                improving_count += 1
+                recommendation = "Improving — no action needed; consider building on this topic with a cluster article."
+            else:
+                verdict = "stable"
+                recommendation = ""
+            item = DecayingContentItem(
+                url=sig.url, title=title_by_url.get(sig.url, ""),
+                previous_clicks=prev_clicks, current_clicks=sig.clicks, click_change_pct=round(click_change_pct, 1),
+                previous_position=prev_position, current_position=sig.avg_position, position_change=round(position_change, 1),
+                verdict=verdict, recommendation=recommendation,
+            )
+
+        if verdict == "decaying":
+            decaying_items.append(item)
+
+        reading_payload = {
+            "site_id": params.site_id, "url": sig.url, "clicks": sig.clicks,
+            "impressions": sig.impressions, "avg_position": sig.avg_position,
+            "source": sig.source,
+        }
+        if prior_page.data:
+            await ctx.store.update("content_decay_readings", prior_page.data[0].id, reading_payload)
+        else:
+            await ctx.store.create("content_decay_readings", reading_payload)
+
+    needs_doing: list[str] = []
+    if decaying_items:
+        needs_doing.append(
+            f"{len(decaying_items)} article(s) are decaying (clicks down 20%+ or position dropped 3+ places): "
+            + ", ".join(i.url for i in decaying_items[:5]) + (" ..." if len(decaying_items) > 5 else "")
+        )
+    if new_count and not decaying_items and not improving_count:
+        needs_doing.append(f"{new_count} URL(s) had no prior reading -- baseline set, check again next period for a trend.")
+    if not params.signals:
+        needs_doing.append("No performance signals given -- pass GSC top_queries-by-page or DataForSEO rank data.")
+    if not needs_doing:
+        needs_doing.append("No decaying content this pass.")
+
+    checked_at = ctx.time.now().isoformat() if hasattr(ctx, "time") and hasattr(ctx.time, "now") else ""
+
+    payload = {
+        "site_id": params.site_id, "tracked_count": len(params.signals),
+        "decaying_count": decaying_count, "improving_count": improving_count, "new_count": new_count,
+        "decaying_items": [item.model_dump() for item in decaying_items],
+        "needs_doing": needs_doing, "checked_at": checked_at,
+    }
+    existing_report = await ctx.store.query("content_decay_reports", where={"site_id": params.site_id}, limit=1)
+    if existing_report.data:
+        await ctx.store.update("content_decay_reports", existing_report.data[0].id, payload)
+    else:
+        await ctx.store.create("content_decay_reports", payload)
+
+    report = ContentDecayReport(id=params.site_id, title=f"Content decay — {params.site_id}", **payload)
+    return ActionResult.success(
+        report,
+        summary=f"Tracked {len(params.signals)} URL(s) for '{params.site_id}': "
+                f"{decaying_count} decaying, {improving_count} improving, {new_count} new baseline(s).",
+        refresh_panels=["queue", "sources"],
+    )
+
+
+@chat.function(
+    "get_content_decay",
+    description="Read the most recent content-decay report for a site (track_content_decay's saved result).",
+    action_type="read",
+    data_model=ContentDecayReport,
+)
+async def get_content_decay(ctx, params: GetContentDecayParams) -> ActionResult:
+    """Read back the most recently saved content-decay report for a site."""
+    page = await ctx.store.query("content_decay_reports", where={"site_id": params.site_id}, limit=1)
+    if not page.data:
+        return ActionResult.error(
+            f"No content decay report found for '{params.site_id}' yet. Run track_content_decay first.",
+            retryable=False,
+        )
+    d = page.data[0]
+    report = ContentDecayReport(id=d.id, title=f"Content decay — {params.site_id}", **d.data)
+    return ActionResult.success(report, summary=f"Decay report for '{params.site_id}' from {d.data.get('checked_at', '?')}.")
 
 
 @chat.function(
@@ -1686,6 +1848,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         "opportunities", "article_briefs", "queue_items",
         "site_competitors", "content_audits", "cannibalization_findings",
         "existing_content_items", "content_authors",
+        "content_decay_readings", "content_decay_reports",
     ]
     removed = {}
     for coll in collections:
@@ -1709,6 +1872,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         content_audits_removed=removed["content_audits"],
         cannibalization_findings_removed=removed["cannibalization_findings"],
         authors_removed=removed["content_authors"],
+        decay_readings_removed=removed["content_decay_readings"] + removed["content_decay_reports"],
         kept_site_ids=kept_site_ids,
     )
     total = sum(removed.values())
@@ -1720,7 +1884,8 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
             f"{removed['queue_items']} queue items, {removed['site_competitors']} competitors, "
             f"{removed['content_audits']} content audits, "
             f"{removed['cannibalization_findings']} cannibalization findings, "
-            f"{removed['content_authors']} authors). "
+            f"{removed['content_authors']} authors, "
+            f"{removed['content_decay_readings'] + removed['content_decay_reports']} decay records). "
             f"Kept {len(kept_site_ids)} connected site(s): {', '.join(kept_site_ids) or '—'}."
         ),
         refresh_panels=["queue", "sources"],
@@ -2433,6 +2598,26 @@ async def sources_panel(ctx, **kwargs) -> object:
             audit_items.append({"key": "Content audit", "value": "⚠️ Never run — required before new opportunities"})
             audit_body = [ui.KeyValue(columns=1, items=audit_items)]
 
+        decay_page = await ctx.store.query("content_decay_reports", where={"site_id": site_id}, limit=1)
+        decay_body = []
+        if decay_page.data:
+            decay = decay_page.data[0].data
+            decay_body = [
+                ui.KeyValue(columns=1, items=[{
+                    "key": "Content decay",
+                    "value": (
+                        f"{decay.get('decaying_count', 0)} decaying · {decay.get('improving_count', 0)} improving · "
+                        f"{decay.get('new_count', 0)} new baseline · as of {decay.get('checked_at', '?')}"
+                    ),
+                }]),
+            ]
+            decaying_items = decay.get("decaying_items", [])
+            if decaying_items:
+                decay_body.append(ui.Text("Needs refreshing:", variant="caption"))
+                decay_body.append(ui.List(items=[
+                    ui.ListItem(id=f"decay-{i}", title=item.get("url", "")) for i, item in enumerate(decaying_items[:5])
+                ]))
+
         visual_guidance = data.get("approved_visual_guidance", {})
         visual_body = []
         if visual_guidance:
@@ -2462,7 +2647,7 @@ async def sources_panel(ctx, **kwargs) -> object:
             ui.Card(
                 title=data.get("brand_name") or site_id,
                 subtitle=data.get("domain", ""),
-                content=ui.Stack(direction="v", gap=2, children=audit_body + visual_body + [audit_button]),
+                content=ui.Stack(direction="v", gap=2, children=audit_body + decay_body + visual_body + [audit_button]),
             )
         )
 

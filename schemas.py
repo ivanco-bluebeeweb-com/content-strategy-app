@@ -515,6 +515,69 @@ class GetContentAuditParams(BaseModel):
     site_id: str = Field(description="Site id from list_site_profiles — never invent it")
 
 
+class ContentPerformanceSignal(BaseModel):
+    """One URL's performance-over-a-period reading, typically fetched from the
+    Google Search Console connector (top_queries aggregated by page) or the
+    DataForSEO connector (check_serp_ranking / rank history) by the
+    orchestrator and passed in here. This app does not call other extensions
+    directly for this — Webbee chains that connector's output into this
+    tool's input, exactly like QuerySignal for discover_opportunities."""
+    url: str = Field(description="The published page's own URL, matched against existing_content_items")
+    clicks: int = Field(0, description="Clicks over the reporting period")
+    impressions: int = Field(0, description="Impressions over the reporting period")
+    avg_position: float = Field(0.0, description="Average SERP position over the reporting period")
+    period_days: int = Field(28, description="Length of the reporting period in days, e.g. 28 for GSC's default window")
+    source: str = Field("gsc", description="Where this signal came from: gsc|dataforseo|manual")
+
+
+class TrackContentDecayParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    signals: list[ContentPerformanceSignal] = Field(
+        default_factory=list,
+        description=(
+            "Current-period performance readings for this site's published "
+            "URLs. Each is compared against the PREVIOUS reading recorded "
+            "for that same URL (from the last time this was called) to "
+            "detect decay -- so this must be called periodically (e.g. "
+            "monthly) for a trend to build up. The first call for a URL "
+            "only establishes the baseline; it cannot yet show decay."
+        ),
+    )
+
+
+class DecayingContentItem(BaseModel):
+    """One URL's decay verdict from comparing this reading to its last one."""
+    url: str = ""
+    title: str = ""
+    previous_clicks: int = 0
+    current_clicks: int = 0
+    click_change_pct: float = 0.0  # negative = clicks fell
+    previous_position: float = 0.0
+    current_position: float = 0.0
+    position_change: float = 0.0  # positive = ranking got WORSE (position number went up)
+    verdict: str = "new"  # new | decaying | improving | stable
+    recommendation: str = ""
+
+
+class ContentDecayReport(sdl.Entity):
+    """Result of comparing a site's published URLs' current performance
+    against their own last recorded reading -- surfaces which articles are
+    losing traffic/ranking so they can be refreshed before they die
+    entirely, instead of only ever writing new content."""
+    site_id: str = ""
+    tracked_count: int = 0
+    decaying_count: int = 0
+    improving_count: int = 0
+    new_count: int = 0
+    decaying_items: list[DecayingContentItem] = Field(default_factory=list)
+    needs_doing: list[str] = Field(default_factory=list)
+    checked_at: str = ""
+
+
+class GetContentDecayParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+
+
 class PurgePipelineDataParams(BaseModel):
     confirm_wipe: bool = Field(
         False,
@@ -535,6 +598,7 @@ class PurgeResult(sdl.Entity):
     content_audits_removed: int = 0
     cannibalization_findings_removed: int = 0
     authors_removed: int = 0
+    decay_readings_removed: int = 0
     kept_site_ids: list[str] = Field(default_factory=list)
 
 

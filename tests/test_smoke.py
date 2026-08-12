@@ -18,6 +18,7 @@ from schemas import (
     AddSiteCompetitorParams, ListSiteCompetitorsParams,
     CreateContentAuthorParams, ListContentAuthorsParams, BuildWriterBriefParams,
     UpdateSiteProfileParams,
+    ContentPerformanceSignal, TrackContentDecayParams, GetContentDecayParams,
 )
 
 
@@ -1541,3 +1542,103 @@ async def test_purge_pipeline_data_removes_content_authors():
     result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
     assert result.status == "success"
     assert result.data.authors_removed == 1
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 2: content decay tracking
+# ──────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_track_content_decay_requires_existing_site():
+    ctx = MockContext()
+    result = await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="nope.md", signals=[ContentPerformanceSignal(url="https://nope.md/x", clicks=10)],
+    ))
+    assert result.status == "error"
+    assert "create_site_profile" in result.error
+
+
+@pytest.mark.asyncio
+async def test_track_content_decay_first_call_sets_baseline_only():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    result = await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="g4s.md",
+        signals=[ContentPerformanceSignal(url="https://g4s.md/blog/a", clicks=50, impressions=500, avg_position=8.0)],
+    ))
+    assert result.status == "success"
+    assert result.data.new_count == 1
+    assert result.data.decaying_count == 0
+    assert result.data.decaying_items == []
+
+
+@pytest.mark.asyncio
+async def test_track_content_decay_detects_decay_on_second_call():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="g4s.md",
+        signals=[ContentPerformanceSignal(url="https://g4s.md/blog/a", clicks=100, impressions=1000, avg_position=5.0)],
+    ))
+    result = await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="g4s.md",
+        signals=[ContentPerformanceSignal(url="https://g4s.md/blog/a", clicks=50, impressions=900, avg_position=9.0)],
+    ))
+    assert result.status == "success"
+    assert result.data.decaying_count == 1
+    assert result.data.decaying_items[0].url == "https://g4s.md/blog/a"
+    assert result.data.decaying_items[0].verdict == "decaying"
+    assert "Refresh" in result.data.decaying_items[0].recommendation
+
+
+@pytest.mark.asyncio
+async def test_track_content_decay_detects_improving_content():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="g4s.md",
+        signals=[ContentPerformanceSignal(url="https://g4s.md/blog/b", clicks=20, impressions=400, avg_position=15.0)],
+    ))
+    result = await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="g4s.md",
+        signals=[ContentPerformanceSignal(url="https://g4s.md/blog/b", clicks=60, impressions=600, avg_position=6.0)],
+    ))
+    assert result.status == "success"
+    assert result.data.improving_count == 1
+    assert result.data.decaying_count == 0
+
+
+@pytest.mark.asyncio
+async def test_get_content_decay_requires_prior_tracking():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    result = await m.get_content_decay(ctx, GetContentDecayParams(site_id="g4s.md"))
+    assert result.status == "error"
+    assert "track_content_decay" in result.error
+
+
+@pytest.mark.asyncio
+async def test_get_content_decay_reads_back_saved_report():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="g4s.md",
+        signals=[ContentPerformanceSignal(url="https://g4s.md/blog/a", clicks=50, avg_position=8.0)],
+    ))
+    result = await m.get_content_decay(ctx, GetContentDecayParams(site_id="g4s.md"))
+    assert result.status == "success"
+    assert result.data.tracked_count == 1
+
+
+@pytest.mark.asyncio
+async def test_purge_pipeline_data_removes_content_decay_records():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.track_content_decay(ctx, TrackContentDecayParams(
+        site_id="g4s.md",
+        signals=[ContentPerformanceSignal(url="https://g4s.md/blog/a", clicks=50, avg_position=8.0)],
+    ))
+    from schemas import PurgePipelineDataParams
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    assert result.status == "success"
+    assert result.data.decay_readings_removed == 2  # 1 reading + 1 report

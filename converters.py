@@ -168,7 +168,27 @@ def to_brief(d) -> ArticleBrief:
         external_link_url=data.get("external_link_url", ""),
         external_link_language=data.get("external_link_language", ""),
         external_link_language_priority=data.get("external_link_language_priority", []),
+        author_id=data.get("author_id", ""),
+        author_name=data.get("author_name", ""),
+        author_bio=data.get("author_bio", ""),
+        author_credentials=data.get("author_credentials", []),
         status=data.get("status", "brief_ready"),
+    )
+
+
+def to_content_author(d) -> "ContentAuthor":
+    from schemas import ContentAuthor
+    data = d.data
+    return ContentAuthor(
+        id=d.id,
+        title=data.get("name", ""),
+        site_id=data.get("site_id", ""),
+        name=data.get("name", ""),
+        bio=data.get("bio", ""),
+        credentials=data.get("credentials", []),
+        expertise_areas=data.get("expertise_areas", []),
+        author_page_url=data.get("author_page_url", ""),
+        same_as=data.get("same_as", []),
     )
 
 
@@ -222,6 +242,7 @@ def to_site_profile(d) -> SiteProfile:
         cta_default_i18n=data.get("cta_default_i18n", {}),
         external_sources_i18n=data.get("external_sources_i18n", {}),
         approved_visual_guidance=data.get("approved_visual_guidance", {}),
+        requires_named_author=data.get("requires_named_author", False),
     )
 
 

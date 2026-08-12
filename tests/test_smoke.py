@@ -16,6 +16,8 @@ from schemas import (
     CreateSiteProfileParams, DiscoverOpportunitiesParams, QuerySignal,
     CreateBriefParams, UpdateQueueStatusParams, ListConnectedSitesParams,
     AddSiteCompetitorParams, ListSiteCompetitorsParams,
+    CreateContentAuthorParams, ListContentAuthorsParams, BuildWriterBriefParams,
+    UpdateSiteProfileParams,
 )
 
 
@@ -1421,3 +1423,121 @@ async def test_create_site_profile_refreshes_queue_and_brief_panels():
     assert "queue" in result.refresh_panels
     assert "brief" in result.refresh_panels
     assert "sources" in result.refresh_panels
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# E-E-A-T: content authors and the requires_named_author gate
+# ──────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_create_content_author_requires_existing_site():
+    ctx = MockContext()
+    result = await m.create_content_author(ctx, CreateContentAuthorParams(
+        site_id="nope.md", name="Ion Popescu",
+    ))
+    assert result.status == "error"
+    assert "create_site_profile" in result.error
+
+
+@pytest.mark.asyncio
+async def test_create_brief_blocks_without_author_when_site_requires_one():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="climtec.md", domain="climtec.md", requires_named_author=True,
+    ))
+    await _seed_audit(ctx, "climtec.md")
+    await _configure_required_link_inputs(ctx, site_id="climtec.md")
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md",
+        queries=[QuerySignal(query="heat pump install", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "error"
+    assert "NAMED_AUTHOR_REQUIRED" in result.error
+
+
+@pytest.mark.asyncio
+async def test_create_brief_succeeds_with_real_author_and_carries_attribution():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="climtec.md", domain="climtec.md", requires_named_author=True,
+    ))
+    await _seed_audit(ctx, "climtec.md")
+    await _configure_required_link_inputs(ctx, site_id="climtec.md")
+    author = await m.create_content_author(ctx, CreateContentAuthorParams(
+        site_id="climtec.md", name="Ion Popescu", bio="15 years in HVAC engineering.",
+        credentials=["Certified HVAC Engineer"], expertise_areas=["heat pumps"],
+    ))
+    assert author.status == "success"
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md",
+        queries=[QuerySignal(query="heat pump install", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(
+        opportunity_id=discovered.data.items[0].id, author_id=author.data.id,
+    ))
+    assert result.status == "success"
+    assert result.data.author_name == "Ion Popescu"
+    assert result.data.author_credentials == ["Certified HVAC Engineer"]
+
+    writer_brief = await m.build_writer_brief(ctx, BuildWriterBriefParams(brief_id=result.data.id))
+    assert writer_brief.status == "success"
+    assert writer_brief.data.author_name == "Ion Popescu"
+    assert "Ion Popescu" in writer_brief.data.body
+    assert "E-E-A-T attribution" in writer_brief.data.body
+
+
+@pytest.mark.asyncio
+async def test_create_brief_rejects_author_from_a_different_site():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    await _seed_audit(ctx, "g4s.md")
+    await _configure_required_link_inputs(ctx, site_id="g4s.md")
+    other_author = await m.create_content_author(ctx, CreateContentAuthorParams(
+        site_id="climtec.md", name="Wrong Site Author",
+    ))
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(
+        opportunity_id=discovered.data.items[0].id, author_id=other_author.data.id,
+    ))
+    assert result.status == "error"
+    assert "not found for site" in result.error
+
+
+@pytest.mark.asyncio
+async def test_list_content_authors_filters_by_site():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    await m.create_content_author(ctx, CreateContentAuthorParams(site_id="g4s.md", name="A"))
+    await m.create_content_author(ctx, CreateContentAuthorParams(site_id="climtec.md", name="B"))
+    result = await m.list_content_authors(ctx, ListContentAuthorsParams(site_id="g4s.md"))
+    assert result.status == "success"
+    assert result.data.total == 1
+    assert result.data.items[0].name == "A"
+
+
+@pytest.mark.asyncio
+async def test_update_site_profile_toggles_requires_named_author():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    result = await m.update_site_profile(ctx, UpdateSiteProfileParams(
+        site_id="g4s.md", requires_named_author=True,
+    ))
+    assert result.status == "success"
+    assert result.data.requires_named_author is True
+
+
+@pytest.mark.asyncio
+async def test_purge_pipeline_data_removes_content_authors():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.create_content_author(ctx, CreateContentAuthorParams(site_id="g4s.md", name="A"))
+    from schemas import PurgePipelineDataParams
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    assert result.status == "success"
+    assert result.data.authors_removed == 1

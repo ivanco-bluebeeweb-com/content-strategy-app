@@ -28,6 +28,7 @@ class SiteProfile(sdl.Entity):
     cta_default_i18n: dict[str, str] = {}  # optional per-language override for cta_default
     external_sources_i18n: dict[str, list[str]] = {}  # verified source URLs, keyed by source language
     approved_visual_guidance: dict[str, object] = {}  # read-only payload from Brand Strategy Hub's approved Visual Profile handoff
+    requires_named_author: bool = False  # E-E-A-T gate: YMYL/expertise-sensitive sites must attach a real ContentAuthor to every brief
 
 
 class SiteProfileList(sdl.EntityList[SiteProfile]):
@@ -48,6 +49,7 @@ class UpdateSiteProfileParams(BaseModel):
     content_categories: list[str] | None = Field(default=None, description="Replace content categories/topics; omit to keep")
     cta_default: str | None = Field(default=None, description="New default CTA; omit to keep")
     cta_default_i18n: dict[str, str] | None = Field(default=None, description="Replace per-language CTA overrides; omit to keep")
+    requires_named_author: bool | None = Field(default=None, description="Replace the E-E-A-T named-author requirement flag; omit to keep")
     external_sources_i18n: dict[str, list[str]] | None = Field(default=None, description="Replace verified external source URLs keyed by source language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}; omit to keep")
     approved_visual_guidance: dict[str, object] | None = Field(default=None, description="Replace the read-only approved Visual Profile guidance relayed from Brand Strategy Hub; omit to keep. This stores guidance only and never creates or generates media.")
 
@@ -115,11 +117,49 @@ class ArticleBrief(sdl.Entity, sdl.Bodied):
     external_link_url: str = ""
     external_link_language: str = ""
     external_link_language_priority: list[str] = []
+    author_id: str = ""
+    author_name: str = ""
+    author_bio: str = ""
+    author_credentials: list[str] = []
     status: str = "brief_ready"
 
 
 class ArticleBriefList(sdl.EntityList[ArticleBrief]):
     pass
+
+
+class ContentAuthor(sdl.Entity):
+    """A real, named author with declared expertise — the E-E-A-T unit this
+    pipeline attaches to a brief instead of leaving articles unattributed.
+    Not a generated persona: name/bio/credentials are entered by a human
+    about a real person (the site owner, an in-house expert, or a
+    contracted writer with actual domain credentials)."""
+    site_id: str = ""
+    name: str = ""
+    bio: str = ""
+    credentials: list[str] = []  # e.g. ["Certified HVAC Engineer", "10+ years in refrigeration"]
+    expertise_areas: list[str] = []  # topics this author is qualified to write about
+    author_page_url: str = ""  # this site's own /author/slug page, if it exists
+    same_as: list[str] = []  # LinkedIn/professional profile URLs for Person schema's sameAs
+
+
+class ContentAuthorList(sdl.EntityList[ContentAuthor]):
+    pass
+
+
+class CreateContentAuthorParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    name: str = Field(min_length=1, description="Real author name, e.g. 'Ion Popescu'")
+    bio: str = Field("", description="Short bio establishing real expertise/experience")
+    credentials: list[str] = Field(default_factory=list, description="Real credentials/qualifications, e.g. ['Certified HVAC Engineer']")
+    expertise_areas: list[str] = Field(default_factory=list, description="Topics this author is qualified to write about")
+    author_page_url: str = Field("", description="This site's own author bio page URL, if published")
+    same_as: list[str] = Field(default_factory=list, description="Professional profile URLs (LinkedIn etc.) for Person schema's sameAs")
+
+
+class ListContentAuthorsParams(BaseModel):
+    site_id: str = Field("", description="Optional site filter. Empty = all sites.")
+    limit: int = Field(20, description="Max items to return (1-100)")
 
 
 class QueueItem(sdl.Entity):
@@ -188,6 +228,7 @@ class CreateBriefParams(BaseModel):
                         "per language for the same opportunity — a multilingual site is expected "
                         "to get a separate brief per language, not one brief reused across languages."
     )
+    author_id: str = Field("", description="ContentAuthor id from list_content_authors to attribute this article to. Required when the site profile has requires_named_author=true; optional otherwise but recommended for E-E-A-T.")
 
 
 class ListBriefsParams(BaseModel):
@@ -217,6 +258,7 @@ class CreateSiteProfileParams(BaseModel):
     content_categories: list[str] = Field(default_factory=list, description="Content categories/topics this site covers")
     cta_default: str = Field("", description="Default call-to-action goal for articles on this site")
     cta_default_i18n: dict[str, str] = Field(default_factory=dict, description="Optional per-language override of cta_default, e.g. {'ru': '...', 'ro': '...'}")
+    requires_named_author: bool = Field(False, description="E-E-A-T gate: when true, create_brief refuses to run until a ContentAuthor is registered and passed in, and the brief always carries a named author for Article Writer/Rank Math. Set true for YMYL topics (health, finance, legal, safety).")
     external_sources_i18n: dict[str, list[str]] = Field(default_factory=dict, description="Verified authoritative external source URLs keyed by their content language, e.g. {'ru': ['https://...'], 'ro': ['https://...']}. The pipeline selects the article language first, then this site's configured language-priority fallback.")
     approved_visual_guidance: dict[str, object] = Field(default_factory=dict, description="Read-only approved Visual Profile guidance relayed from Brand Strategy Hub. It is appended to downstream briefs as a non-generative media constraint.")
 
@@ -339,6 +381,9 @@ class WriterBrief(sdl.Entity, sdl.Bodied):
     external_link_language: str = ""
     external_link_language_priority: list[str] = []
     differentiation_notes: str = ""
+    author_name: str = ""
+    author_bio: str = ""
+    author_credentials: list[str] = []
     approved_visual_guidance: dict[str, object] = {}
 
 
@@ -489,6 +534,7 @@ class PurgeResult(sdl.Entity):
     competitors_removed: int = 0
     content_audits_removed: int = 0
     cannibalization_findings_removed: int = 0
+    authors_removed: int = 0
     kept_site_ids: list[str] = Field(default_factory=list)
 
 

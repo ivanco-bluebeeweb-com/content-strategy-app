@@ -41,6 +41,7 @@ from schemas import (
     ContentAuditReport, RunContentAuditParams, GetContentAuditParams,
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
     PurgePipelineDataParams, PurgeResult,
+    ContentAuthor, ContentAuthorList, CreateContentAuthorParams, ListContentAuthorsParams,
 )
 from link_policy import language_priority, resolve_external_source, resolve_key_action_page
 from converters import (
@@ -53,6 +54,7 @@ from converters import (
     to_queue_item as _to_queue_item,
     to_site_profile as _to_site_profile,
     to_site_competitor as _to_site_competitor,
+    to_content_author as _to_content_author,
     word_count as _word_count,
     top_terms as _top_terms,
     term_overlap_score as _term_overlap_score,
@@ -262,6 +264,7 @@ async def create_site_profile(ctx, params: CreateSiteProfileParams) -> ActionRes
             "cta_default_i18n": params.cta_default_i18n,
             "external_sources_i18n": params.external_sources_i18n,
             "approved_visual_guidance": approved_visual_guidance,
+            "requires_named_author": params.requires_named_author,
         },
     )
     return ActionResult.success(
@@ -298,6 +301,10 @@ async def update_site_profile(ctx, params: UpdateSiteProfileParams) -> ActionRes
     doc_id = existing.data[0].id
     updates = {}
     for field in ("brand_name", "business_description", "cta_default"):
+        value = getattr(params, field)
+        if value is not None:
+            updates[field] = value
+    for field in ("requires_named_author",):
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
@@ -396,6 +403,74 @@ async def list_site_competitors(ctx, params: ListSiteCompetitorsParams) -> Actio
     return ActionResult.success(
         SiteCompetitorProfileList(items=items, total=len(items)),
         summary=f"{len(items)} site competitor(s).",
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# E-E-A-T: named authors with real, declared expertise
+#
+# create_brief refuses to run for a site with requires_named_author=true
+# unless author_id resolves to a real ContentAuthor for that site (see the
+# gate inside create_brief below). This is what stops YMYL content from
+# ever going out unattributed.
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "create_content_author",
+    description=(
+        "Register a real, named content author for a site — name, bio, "
+        "credentials, and expertise areas establishing genuine E-E-A-T "
+        "(Experience, Expertise, Authoritativeness, Trust). This is not a "
+        "generated persona: enter a real person's real credentials. Required "
+        "before create_brief for any site with requires_named_author=true."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:content_author"],
+    event="content_author_created",
+    data_model=ContentAuthor,
+)
+async def create_content_author(ctx, params: CreateContentAuthorParams) -> ActionResult:
+    """Save one real, named author profile for a site."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"No site profile '{params.site_id}'. Create it first with create_site_profile.",
+            retryable=False,
+        )
+    doc = await ctx.store.create(
+        "content_authors",
+        {
+            "site_id": params.site_id,
+            "name": params.name,
+            "bio": params.bio,
+            "credentials": params.credentials,
+            "expertise_areas": params.expertise_areas,
+            "author_page_url": params.author_page_url,
+            "same_as": params.same_as,
+        },
+    )
+    return ActionResult.success(
+        _to_content_author(doc),
+        summary=f"Author '{params.name}' registered for site '{params.site_id}'.",
+        refresh_panels=["sources"],
+    )
+
+
+@chat.function(
+    "list_content_authors",
+    description="List registered content authors, optionally filtered by site.",
+    action_type="read",
+    data_model=ContentAuthorList,
+)
+async def list_content_authors(ctx, params: ListContentAuthorsParams) -> ActionResult:
+    """Return registered authors, optionally filtered by site."""
+    where = {"site_id": params.site_id} if params.site_id else None
+    page = await ctx.store.query("content_authors", where=where, limit=params.limit)
+    items = [_to_content_author(d) for d in page.data]
+    return ActionResult.success(
+        ContentAuthorList(items=items, total=len(items)),
+        summary=f"{len(items)} content author(s).",
     )
 
 
@@ -880,6 +955,35 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             retryable=False,
         )
 
+    # E-E-A-T gate: a site marked requires_named_author must never get a
+    # brief without a real, registered author attached. Even for sites that
+    # don't require it, a given author_id must resolve to a real author
+    # record for THIS site -- never silently ignored.
+    author_id = ""
+    author_name = ""
+    author_bio = ""
+    author_credentials: list[str] = []
+    if params.author_id:
+        author_doc = await ctx.store.get("content_authors", params.author_id)
+        if not author_doc or author_doc.data.get("site_id") != opp.get("site_id", ""):
+            return ActionResult.error(
+                f"Author '{params.author_id}' not found for site '{opp.get('site_id', '')}'. "
+                f"Use list_content_authors or register one with create_content_author.",
+                retryable=False,
+            )
+        author_id = author_doc.id
+        author_name = author_doc.data.get("name", "")
+        author_bio = author_doc.data.get("bio", "")
+        author_credentials = author_doc.data.get("credentials", [])
+    elif profile.get("requires_named_author"):
+        return ActionResult.error(
+            "NAMED_AUTHOR_REQUIRED: this site is marked requires_named_author=true "
+            "(E-E-A-T gate) -- create_brief needs a real author_id. Register one with "
+            "create_content_author, then pass its id in author_id.",
+            retryable=False,
+            code="NAMED_AUTHOR_REQUIRED",
+        )
+
     # one brief per (opportunity, language) — refuse a silent duplicate
     existing_briefs = await ctx.store.query("article_briefs", limit=500)
     for d in existing_briefs.data:
@@ -1005,6 +1109,10 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "external_link_language": external_link_language,
             "external_link_language_priority": external_language_priority,
             "differentiation_notes": "",
+            "author_id": author_id,
+            "author_name": author_name,
+            "author_bio": author_bio,
+            "author_credentials": author_credentials,
             "image_requirements": image_requirements,
             "text_policy": text_policy,
             "image_text": image_text,
@@ -1390,6 +1498,17 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
         "- End the article with a CTA that is a markdown link to the resolved key action page; use a natural, language-appropriate anchor that expresses the CTA goal.",
         f"- Resolved key action page: {brief.get('key_action_page_url', '')} ({brief.get('key_action_page_reason', '')})",
     ]
+    if brief.get("author_name"):
+        author_lines = [
+            "",
+            "## Author (E-E-A-T attribution)",
+            f"- Byline: {brief.get('author_name', '')}",
+        ]
+        if brief.get("author_bio"):
+            author_lines.append(f"- Bio: {brief.get('author_bio', '')}")
+        if brief.get("author_credentials"):
+            author_lines.append(f"- Credentials: {', '.join(brief.get('author_credentials', []))}")
+        body_lines += author_lines
     visual_guidance = brief.get("approved_visual_guidance", {})
     current_guidance = profile.get("approved_visual_guidance", {})
     visual_guidance_is_current = _approved_visual_baseline_is_current(
@@ -1434,6 +1553,9 @@ async def build_writer_brief(ctx, params: BuildWriterBriefParams) -> ActionResul
         external_link_language=brief.get("external_link_language", ""),
         external_link_language_priority=brief.get("external_link_language_priority", []),
         differentiation_notes=brief.get("differentiation_notes", ""),
+        author_name=brief.get("author_name", ""),
+        author_bio=brief.get("author_bio", ""),
+        author_credentials=brief.get("author_credentials", []),
         approved_visual_guidance=visual_guidance if visual_guidance_is_current else {},
     )
     return ActionResult.success(payload, summary=f"Writer brief assembled for '{payload.working_title}'.")
@@ -1563,7 +1685,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
     collections = [
         "opportunities", "article_briefs", "queue_items",
         "site_competitors", "content_audits", "cannibalization_findings",
-        "existing_content_items",
+        "existing_content_items", "content_authors",
     ]
     removed = {}
     for coll in collections:
@@ -1586,6 +1708,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         competitors_removed=removed["site_competitors"],
         content_audits_removed=removed["content_audits"],
         cannibalization_findings_removed=removed["cannibalization_findings"],
+        authors_removed=removed["content_authors"],
         kept_site_ids=kept_site_ids,
     )
     total = sum(removed.values())
@@ -1596,7 +1719,8 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
             f"({removed['opportunities']} opportunities, {removed['article_briefs']} briefs, "
             f"{removed['queue_items']} queue items, {removed['site_competitors']} competitors, "
             f"{removed['content_audits']} content audits, "
-            f"{removed['cannibalization_findings']} cannibalization findings). "
+            f"{removed['cannibalization_findings']} cannibalization findings, "
+            f"{removed['content_authors']} authors). "
             f"Kept {len(kept_site_ids)} connected site(s): {', '.join(kept_site_ids) or '—'}."
         ),
         refresh_panels=["queue", "sources"],

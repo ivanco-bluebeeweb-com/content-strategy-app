@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.13",
   "app_id": "content-strategy-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "name": "Content Strategy",
   "description": "Plans what to write next for your sites. Discovers content opportunities from Google Search Console data, clusters them into topics, generates structured article briefs (with image requirements for downstream generation), and tracks each idea through an editorial queue from idea to published.",
   "icon": "icon.svg",
@@ -50,7 +50,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Optional per-language override of business_description, e.g. {'ru': '...', 'ro': '...'} — used by create_brief so target_audience is written in the brief's actual target_language instead of always falling back to business_description",
+            "description": "Optional per-language override of business_description, e.g. {'ru': '...', 'ro': '...'} \u2014 used by create_brief so target_audience is written in the brief's actual target_language instead of always falling back to business_description",
             "title": "Business Description I18N",
             "type": "object"
           },
@@ -83,6 +83,12 @@
             "description": "Optional per-language override of cta_default, e.g. {'ru': '...', 'ro': '...'}",
             "title": "Cta Default I18N",
             "type": "object"
+          },
+          "requires_named_author": {
+            "default": false,
+            "description": "E-E-A-T gate: when true, create_brief refuses to run until a ContentAuthor is registered and passed in, and the brief always carries a named author for Article Writer/Rank Math. Set true for YMYL topics (health, finance, legal, safety).",
+            "title": "Requires Named Author",
+            "type": "boolean"
           },
           "external_sources_i18n": {
             "additionalProperties": {
@@ -253,6 +259,11 @@
             "default": {},
             "title": "Approved Visual Guidance",
             "type": "object"
+          },
+          "requires_named_author": {
+            "default": false,
+            "title": "Requires Named Author",
+            "type": "boolean"
           }
         },
         "required": [
@@ -282,7 +293,7 @@
         "description": "Patch an existing site profile with only the given fields. Needed so\na re-run of build_content_strategy_handoff (Brand Strategy Hub) can\nactually refresh a site profile's content_categories/business_description\netc. -- create_site_profile refuses to run again once a site_id exists,\nand until this existed there was NO way to update one afterwards.",
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
+            "description": "Site id from list_site_profiles \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -388,6 +399,19 @@
             "default": null,
             "description": "Replace per-language CTA overrides; omit to keep",
             "title": "Cta Default I18N"
+          },
+          "requires_named_author": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace the E-E-A-T named-author requirement flag; omit to keep",
+            "title": "Requires Named Author"
           },
           "external_sources_i18n": {
             "anyOf": [
@@ -573,6 +597,11 @@
             "default": {},
             "title": "Approved Visual Guidance",
             "type": "object"
+          },
+          "requires_named_author": {
+            "default": false,
+            "title": "Requires Named Author",
+            "type": "boolean"
           }
         },
         "required": [
@@ -754,6 +783,11 @@
                 "default": {},
                 "title": "Approved Visual Guidance",
                 "type": "object"
+              },
+              "requires_named_author": {
+                "default": false,
+                "title": "Requires Named Author",
+                "type": "boolean"
               }
             },
             "required": [
@@ -818,7 +852,7 @@
     },
     {
       "name": "add_site_competitor",
-      "description": "Track a competitor for a managed site at the web/content level — which competing pages/sites rank or compete for the same topics, with observed strengths and weaknesses. Distinct from Brand Strategy Hub's brand-level competitors: this is about content/SERP rivals for THIS site specifically.",
+      "description": "Track a competitor for a managed site at the web/content level \u2014 which competing pages/sites rank or compete for the same topics, with observed strengths and weaknesses. Distinct from Brand Strategy Hub's brand-level competitors: this is about content/SERP rivals for THIS site specifically.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -828,7 +862,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
+            "description": "Site id from list_site_profiles \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -883,7 +917,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "One tracked competitor for a managed site — SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
+        "description": "One tracked competitor for a managed site \u2014 SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1023,7 +1057,7 @@
       "return_schema": {
         "$defs": {
           "SiteCompetitorProfile": {
-            "description": "One tracked competitor for a managed site — SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
+            "description": "One tracked competitor for a managed site \u2014 SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
             "properties": {
               "id": {
                 "anyOf": [
@@ -1182,6 +1216,405 @@
       "owner_chat_tool": "content-strategy-app"
     },
     {
+      "name": "create_content_author",
+      "description": "Register a real, named content author for a site \u2014 name, bio, credentials, and expertise areas establishing genuine E-E-A-T (Experience, Expertise, Authoritativeness, Trust). This is not a generated persona: enter a real person's real credentials. Required before create_brief for any site with requires_named_author=true.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:content_author"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "Real author name, e.g. 'Ion Popescu'",
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "bio": {
+            "default": "",
+            "description": "Short bio establishing real expertise/experience",
+            "title": "Bio",
+            "type": "string"
+          },
+          "credentials": {
+            "description": "Real credentials/qualifications, e.g. ['Certified HVAC Engineer']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Credentials",
+            "type": "array"
+          },
+          "expertise_areas": {
+            "description": "Topics this author is qualified to write about",
+            "items": {
+              "type": "string"
+            },
+            "title": "Expertise Areas",
+            "type": "array"
+          },
+          "author_page_url": {
+            "default": "",
+            "description": "This site's own author bio page URL, if published",
+            "title": "Author Page Url",
+            "type": "string"
+          },
+          "same_as": {
+            "description": "Professional profile URLs (LinkedIn etc.) for Person schema's sameAs",
+            "items": {
+              "type": "string"
+            },
+            "title": "Same As",
+            "type": "array"
+          }
+        },
+        "required": [
+          "site_id",
+          "name"
+        ],
+        "title": "CreateContentAuthorParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "A real, named author with declared expertise \u2014 the E-E-A-T unit this\npipeline attaches to a brief instead of leaving articles unattributed.\nNot a generated persona: name/bio/credentials are entered by a human\nabout a real person (the site owner, an in-house expert, or a\ncontracted writer with actual domain credentials).",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "bio": {
+            "default": "",
+            "title": "Bio",
+            "type": "string"
+          },
+          "credentials": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Credentials",
+            "type": "array"
+          },
+          "expertise_areas": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Expertise Areas",
+            "type": "array"
+          },
+          "author_page_url": {
+            "default": "",
+            "title": "Author Page Url",
+            "type": "string"
+          },
+          "same_as": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Same As",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ContentAuthor",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "content_author_created",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "list_content_authors",
+      "description": "List registered content authors, optionally filtered by site.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "default": "",
+            "description": "Optional site filter. Empty = all sites.",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Max items to return (1-100)",
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ListContentAuthorsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "ContentAuthor": {
+            "description": "A real, named author with declared expertise \u2014 the E-E-A-T unit this\npipeline attaches to a brief instead of leaving articles unattributed.\nNot a generated persona: name/bio/credentials are entered by a human\nabout a real person (the site owner, an in-house expert, or a\ncontracted writer with actual domain credentials).",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "name": {
+                "default": "",
+                "title": "Name",
+                "type": "string"
+              },
+              "bio": {
+                "default": "",
+                "title": "Bio",
+                "type": "string"
+              },
+              "credentials": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Credentials",
+                "type": "array"
+              },
+              "expertise_areas": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Expertise Areas",
+                "type": "array"
+              },
+              "author_page_url": {
+                "default": "",
+                "title": "Author Page Url",
+                "type": "string"
+              },
+              "same_as": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Same As",
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "ContentAuthor",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/ContentAuthor"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ContentAuthorList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
       "name": "run_content_audit",
       "description": "Deep audit of a site's EXISTING content -- MANDATORY before any new content strategy work for that site (discover_opportunities refuses to run without one). Pulls every live post from WordPress Hub (via inter-extension IPC, not chat), measures word count (flags thin content under 300 words), checks for a missing excerpt, extracts a cheap keyword signature per article, and cross-checks every pair for keyword cannibalization -- two+ articles competing for the same topic and splitting ranking signal instead of reinforcing one page. Always produces an explicit 'needs_doing' list, even when nothing is wrong, so the audit result is visible and actionable in the panel, never a silent pass.",
       "action_type": "write",
@@ -1193,7 +1626,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
+            "description": "Site id from list_site_profiles \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -1205,7 +1638,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
+        "description": "Result of a deep audit of a site's EXISTING content \u2014 mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1358,7 +1791,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
+            "description": "Site id from list_site_profiles \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -1370,7 +1803,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
+        "description": "Result of a deep audit of a site's EXISTING content \u2014 mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1523,13 +1956,13 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles — never invent it",
+            "description": "Site id from list_site_profiles \u2014 never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "candidate_keyword": {
             "default": "",
-            "description": "Optional: a NEW topic/keyword being considered for a fresh article — checked against existing content so a duplicate topic is caught BEFORE writing, not after. Empty = audit existing articles against each other only.",
+            "description": "Optional: a NEW topic/keyword being considered for a fresh article \u2014 checked against existing content so a duplicate topic is caught BEFORE writing, not after. Empty = audit existing articles against each other only.",
             "title": "Candidate Keyword",
             "type": "string"
           }
@@ -1543,7 +1976,7 @@
       "return_schema": {
         "$defs": {
           "CannibalizationFinding": {
-            "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page.",
+            "description": "Two or more existing articles competing for the same topic/keywords \u2014\nthey will split ranking signal instead of reinforcing one page.",
             "properties": {
               "id": {
                 "anyOf": [
@@ -1715,7 +2148,7 @@
     },
     {
       "name": "discover_opportunities",
-      "description": "Turn query signals (fetch these first from the Google Search Console connector's top_queries or striking_distance tools, or from SEO Audit Engine findings) into scored content opportunities for a site, clustered by topic. Creates queue items in 'idea' status for each new opportunity. ASSISTANT POLICY (not enforced by this tool's params): before calling this, ask the user in chat how many articles/opportunities they want surfaced this round — never assume the 'limit' default silently. If the user's answer is ambiguous (e.g. mixed-language phrasing, unclear number, or could mean per-language rather than total — this platform is multilingual), ask a clarifying follow-up instead of guessing.",
+      "description": "Turn query signals (fetch these first from the Google Search Console connector's top_queries or striking_distance tools, or from SEO Audit Engine findings) into scored content opportunities for a site, clustered by topic. Creates queue items in 'idea' status for each new opportunity. ASSISTANT POLICY (not enforced by this tool's params): before calling this, ask the user in chat how many articles/opportunities they want surfaced this round \u2014 never assume the 'limit' default silently. If the user's answer is ambiguous (e.g. mixed-language phrasing, unclear number, or could mean per-language rather than total \u2014 this platform is multilingual), ask a clarifying follow-up instead of guessing.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -1726,7 +2159,7 @@
       "params_schema": {
         "$defs": {
           "QuerySignal": {
-            "description": "One query-level signal, typically fetched from Google Search Console\n(top_queries / striking_distance) by the orchestrator and passed in here.\nThis app does not call other extensions directly — Webbee chains the\nGSC connector's output into this tool's input.",
+            "description": "One query-level signal, typically fetched from Google Search Console\n(top_queries / striking_distance) by the orchestrator and passed in here.\nThis app does not call other extensions directly \u2014 Webbee chains the\nGSC connector's output into this tool's input.",
             "properties": {
               "query": {
                 "description": "The search query text",
@@ -1778,7 +2211,7 @@
             "type": "string"
           },
           "queries": {
-            "description": "Query signals to turn into opportunities — typically the output of the Google Search Console connector's top_queries or striking_distance tools, fetched first and passed in here. If empty, no opportunities are created (this tool does not fetch GSC data itself).",
+            "description": "Query signals to turn into opportunities \u2014 typically the output of the Google Search Console connector's top_queries or striking_distance tools, fetched first and passed in here. If empty, no opportunities are created (this tool does not fetch GSC data itself).",
             "items": {
               "$ref": "#/$defs/QuerySignal"
             },
@@ -2252,14 +2685,20 @@
       "params_schema": {
         "properties": {
           "opportunity_id": {
-            "description": "UUID of the opportunity to turn into a brief — from list_opportunities, never invented",
+            "description": "UUID of the opportunity to turn into a brief \u2014 from list_opportunities, never invented",
             "title": "Opportunity Id",
             "type": "string"
           },
           "target_language": {
             "default": "",
-            "description": "Language code for this brief (e.g. 'ru', 'ro'). Empty = use the site profile's first target language. Pass explicitly to create one brief per language for the same opportunity — a multilingual site is expected to get a separate brief per language, not one brief reused across languages.",
+            "description": "Language code for this brief (e.g. 'ru', 'ro'). Empty = use the site profile's first target language. Pass explicitly to create one brief per language for the same opportunity \u2014 a multilingual site is expected to get a separate brief per language, not one brief reused across languages.",
             "title": "Target Language",
+            "type": "string"
+          },
+          "author_id": {
+            "default": "",
+            "description": "ContentAuthor id from list_content_authors to attribute this article to. Required when the site profile has requires_named_author=true; optional otherwise but recommended for E-E-A-T.",
+            "title": "Author Id",
             "type": "string"
           }
         },
@@ -2502,6 +2941,29 @@
               "type": "string"
             },
             "title": "External Link Language Priority",
+            "type": "array"
+          },
+          "author_id": {
+            "default": "",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "author_name": {
+            "default": "",
+            "title": "Author Name",
+            "type": "string"
+          },
+          "author_bio": {
+            "default": "",
+            "title": "Author Bio",
+            "type": "string"
+          },
+          "author_credentials": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Author Credentials",
             "type": "array"
           }
         },
@@ -2963,7 +3425,7 @@
       "params_schema": {
         "properties": {
           "queue_item_id": {
-            "description": "UUID of the queue item to link — from list_queue, never invented",
+            "description": "UUID of the queue item to link \u2014 from list_queue, never invented",
             "title": "Queue Item Id",
             "type": "string"
           },
@@ -2987,7 +3449,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Editorial workflow state — one row per opportunity/brief in flight.",
+        "description": "Editorial workflow state \u2014 one row per opportunity/brief in flight.",
         "properties": {
           "id": {
             "anyOf": [
@@ -3139,7 +3601,7 @@
       "params_schema": {
         "properties": {
           "brief_id": {
-            "description": "UUID of an existing article brief — from list_briefs, never invented",
+            "description": "UUID of an existing article brief \u2014 from list_briefs, never invented",
             "title": "Brief Id",
             "type": "string"
           }
@@ -3384,6 +3846,29 @@
             },
             "title": "External Link Language Priority",
             "type": "array"
+          },
+          "author_id": {
+            "default": "",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "author_name": {
+            "default": "",
+            "title": "Author Name",
+            "type": "string"
+          },
+          "author_bio": {
+            "default": "",
+            "title": "Author Bio",
+            "type": "string"
+          },
+          "author_credentials": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Author Credentials",
+            "type": "array"
           }
         },
         "required": [
@@ -3410,7 +3895,7 @@
       "params_schema": {
         "properties": {
           "brief_id": {
-            "description": "UUID of an existing article brief — from list_briefs, never invented",
+            "description": "UUID of an existing article brief \u2014 from list_briefs, never invented",
             "title": "Brief Id",
             "type": "string"
           }
@@ -3599,7 +4084,7 @@
     },
     {
       "name": "build_writer_brief",
-      "description": "Assemble an existing article brief into the exact shape Article Writer (imperal-article-writer-extension) needs for create_project/create_article/generate_article — title, keyword, outline, audience, CTA. Pass the returned fields straight into that app's tools; there is no direct extension-to-extension call, so Webbee relays this data in the same chat turn.",
+      "description": "Assemble an existing article brief into the exact shape Article Writer (imperal-article-writer-extension) needs for create_project/create_article/generate_article \u2014 title, keyword, outline, audience, CTA. Pass the returned fields straight into that app's tools; there is no direct extension-to-extension call, so Webbee relays this data in the same chat turn.",
       "action_type": "read",
       "chain_callable": true,
       "effects": [],
@@ -3607,7 +4092,7 @@
       "params_schema": {
         "properties": {
           "brief_id": {
-            "description": "UUID of an existing article brief — from list_briefs, never invented",
+            "description": "UUID of an existing article brief \u2014 from list_briefs, never invented",
             "title": "Brief Id",
             "type": "string"
           }
@@ -3619,7 +4104,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Everything Article Writer needs to create_project/create_article/generate_article\nfor this brief, assembled in the exact shape that app's tools expect. There is no\ndirect extension-to-extension call here (no cross-extension IPC exists on this\nplatform) — Webbee reads this entity's fields and passes them into Article Writer's\nown tools in the next chat turn. The `body` (from sdl.Bodied) is the full brief as\nMarkdown, ready to paste as Article Writer's brief/keyword input.",
+        "description": "Everything Article Writer needs to create_project/create_article/generate_article\nfor this brief, assembled in the exact shape that app's tools expect. There is no\ndirect extension-to-extension call here (no cross-extension IPC exists on this\nplatform) \u2014 Webbee reads this entity's fields and passes them into Article Writer's\nown tools in the next chat turn. The `body` (from sdl.Bodied) is the full brief as\nMarkdown, ready to paste as Article Writer's brief/keyword input.",
         "properties": {
           "body": {
             "anyOf": [
@@ -3840,6 +4325,24 @@
             "default": "",
             "title": "Differentiation Notes",
             "type": "string"
+          },
+          "author_name": {
+            "default": "",
+            "title": "Author Name",
+            "type": "string"
+          },
+          "author_bio": {
+            "default": "",
+            "title": "Author Bio",
+            "type": "string"
+          },
+          "author_credentials": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Author Credentials",
+            "type": "array"
           },
           "approved_visual_guidance": {
             "additionalProperties": true,
@@ -4123,6 +4626,29 @@
                 },
                 "title": "External Link Language Priority",
                 "type": "array"
+              },
+              "author_id": {
+                "default": "",
+                "title": "Author Id",
+                "type": "string"
+              },
+              "author_name": {
+                "default": "",
+                "title": "Author Name",
+                "type": "string"
+              },
+              "author_bio": {
+                "default": "",
+                "title": "Author Bio",
+                "type": "string"
+              },
+              "author_credentials": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Author Credentials",
+                "type": "array"
               }
             },
             "required": [
@@ -4187,7 +4713,7 @@
     },
     {
       "name": "list_queue",
-      "description": "List the editorial queue — opportunities and briefs tracked through their lifecycle from idea to published. Optionally filter by site and/or lifecycle status.",
+      "description": "List the editorial queue \u2014 opportunities and briefs tracked through their lifecycle from idea to published. Optionally filter by site and/or lifecycle status.",
       "action_type": "read",
       "chain_callable": true,
       "effects": [],
@@ -4219,7 +4745,7 @@
       "return_schema": {
         "$defs": {
           "QueueItem": {
-            "description": "Editorial workflow state — one row per opportunity/brief in flight.",
+            "description": "Editorial workflow state \u2014 one row per opportunity/brief in flight.",
             "properties": {
               "id": {
                 "anyOf": [
@@ -4417,7 +4943,7 @@
       "params_schema": {
         "properties": {
           "queue_item_id": {
-            "description": "UUID of the queue item to update — from list_queue, never invented",
+            "description": "UUID of the queue item to update \u2014 from list_queue, never invented",
             "title": "Queue Item Id",
             "type": "string"
           },
@@ -4441,7 +4967,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Editorial workflow state — one row per opportunity/brief in flight.",
+        "description": "Editorial workflow state \u2014 one row per opportunity/brief in flight.",
         "properties": {
           "id": {
             "anyOf": [
@@ -4608,7 +5134,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Outcome of a full pipeline data wipe — counts removed per collection,\nand which site profiles were kept untouched.",
+        "description": "Outcome of a full pipeline data wipe \u2014 counts removed per collection,\nand which site profiles were kept untouched.",
         "properties": {
           "id": {
             "anyOf": [
@@ -4708,6 +5234,11 @@
             "title": "Cannibalization Findings Removed",
             "type": "integer"
           },
+          "authors_removed": {
+            "default": 0,
+            "title": "Authors Removed",
+            "type": "integer"
+          },
           "kept_site_ids": {
             "items": {
               "type": "string"
@@ -4752,7 +5283,7 @@
       "return_schema": {
         "$defs": {
           "ConnectedSite": {
-            "description": "One site read from a site-provider extension (WordPress Hub today,\nmore providers later) — the raw material behind the Quick Add list.",
+            "description": "One site read from a site-provider extension (WordPress Hub today,\nmore providers later) \u2014 the raw material behind the Quick Add list.",
             "properties": {
               "id": {
                 "anyOf": [
@@ -4900,7 +5431,7 @@
       "slot": "left",
       "title": "Editorial Queue",
       "tree": {},
-      "icon": "📋",
+      "icon": "\ud83d\udccb",
       "refresh": "manual",
       "center_overlay": false,
       "default_width": 300,
@@ -4912,7 +5443,7 @@
       "slot": "center",
       "title": "Opportunity / Brief",
       "tree": {},
-      "icon": "📝",
+      "icon": "\ud83d\udcdd",
       "refresh": "manual",
       "center_overlay": true
     },
@@ -4921,7 +5452,7 @@
       "slot": "right",
       "title": "Sites",
       "tree": {},
-      "icon": "🌐",
+      "icon": "\ud83c\udf10",
       "refresh": "manual",
       "center_overlay": false,
       "default_width": 280,

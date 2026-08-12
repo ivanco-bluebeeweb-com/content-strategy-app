@@ -42,6 +42,8 @@ from schemas import (
     ContentAuditReport, RunContentAuditParams, GetContentAuditParams,
     ContentPerformanceSignal, TrackContentDecayParams, DecayingContentItem,
     RecordKpiSnapshotParams, KpiSnapshot, KpiTrendDelta, KpiDashboardReport, GetKpiDashboardParams,
+    CreateOutreachTargetParams, UpdateOutreachStatusParams, OutreachTarget, OutreachTargetList,
+    ListOutreachTargetsParams, LinkBuildingReport, GetLinkBuildingReportParams,
     ContentDecayReport, GetContentDecayParams,
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
     PurgePipelineDataParams, PurgeResult,
@@ -58,6 +60,7 @@ from converters import (
     to_queue_item as _to_queue_item,
     to_site_profile as _to_site_profile,
     to_site_competitor as _to_site_competitor,
+    to_outreach_target as _to_outreach_target,
     to_content_author as _to_content_author,
     word_count as _word_count,
     top_terms as _top_terms,
@@ -408,6 +411,172 @@ async def list_site_competitors(ctx, params: ListSiteCompetitorsParams) -> Actio
         SiteCompetitorProfileList(items=items, total=len(items)),
         summary=f"{len(items)} site competitor(s).",
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 6: active link-building / outreach workflow
+#
+# Concrete, named outreach targets with a real lifecycle status -- turns
+# link-building from passively-observed DataForSEO backlink data into
+# trackable human work. This app never sends outreach emails itself and
+# never contacts DataForSEO/any connector directly -- statuses are
+# recorded here by a human (or by Webbee acting on the human's behalf)
+# after the outreach actually happened.
+# ──────────────────────────────────────────────────────────────────────────
+
+_OUTREACH_STATUSES = ("prospected", "contacted", "replied", "link_acquired", "declined", "no_response")
+
+
+@chat.function(
+    "add_link_building_target",
+    description=(
+        "Add a concrete link-building/outreach target for a site -- a named domain (and "
+        "optionally a specific page) to pursue for a backlink or mention, with the tactic "
+        "being used (guest_post, broken_link, resource_page, linkable_asset, digital_pr, "
+        "mention_upgrade, other). Starts at status 'prospected'. Use update_outreach_status "
+        "to move it forward as real outreach happens."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:outreach_target"],
+    event="outreach_target_created",
+    data_model=OutreachTarget,
+)
+async def add_link_building_target(ctx, params: CreateOutreachTargetParams) -> ActionResult:
+    """Register one outreach target at status 'prospected'."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"No site profile '{params.site_id}'. Create it first with create_site_profile.",
+            retryable=False,
+        )
+    now = ctx.time.now().isoformat() if hasattr(ctx, "time") and hasattr(ctx.time, "now") else ""
+    payload = {
+        "site_id": params.site_id,
+        "target_domain": params.target_domain,
+        "target_url": params.target_url,
+        "tactic": params.tactic,
+        "linked_article_url": params.linked_article_url,
+        "contact_name": params.contact_name,
+        "contact_email": params.contact_email,
+        "status": "prospected",
+        "acquired_url": "",
+        "notes": params.notes,
+        "status_history": [{"status": "prospected", "at": now}],
+        "created_at": now,
+        "updated_at": now,
+    }
+    doc = await ctx.store.create("outreach_targets", payload)
+    return ActionResult.success(
+        _to_outreach_target(doc),
+        summary=f"Outreach target '{params.target_domain}' added for '{params.site_id}' (prospected).",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
+    "update_outreach_status",
+    description=(
+        "Move a link-building outreach target to a new status: prospected|contacted|replied|"
+        "link_acquired|declined|no_response. Pass acquired_url when moving to 'link_acquired' "
+        "to record where the backlink actually landed."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["update:outreach_target"],
+    event="outreach_status_updated",
+    data_model=OutreachTarget,
+)
+async def update_outreach_status(ctx, params: UpdateOutreachStatusParams) -> ActionResult:
+    """Update an outreach target's lifecycle status, keeping status_history."""
+    if params.status not in _OUTREACH_STATUSES:
+        return ActionResult.error(
+            f"Invalid status '{params.status}'. Must be one of: {', '.join(_OUTREACH_STATUSES)}.",
+            retryable=False,
+        )
+    doc = await ctx.store.get("outreach_targets", params.outreach_id)
+    if not doc:
+        return ActionResult.error(f"Outreach target '{params.outreach_id}' not found.", retryable=False)
+    now = ctx.time.now().isoformat() if hasattr(ctx, "time") and hasattr(ctx.time, "now") else ""
+    history = list(doc.data.get("status_history", []))
+    history.append({"status": params.status, "at": now})
+    update = {"status": params.status, "status_history": history, "updated_at": now}
+    if params.acquired_url:
+        update["acquired_url"] = params.acquired_url
+    if params.notes:
+        update["notes"] = params.notes
+    await ctx.store.update("outreach_targets", params.outreach_id, update)
+    updated = await ctx.store.get("outreach_targets", params.outreach_id)
+    return ActionResult.success(
+        _to_outreach_target(updated),
+        summary=f"Outreach target moved to '{params.status}'.",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
+    "list_link_building_targets",
+    description="List link-building/outreach targets, optionally filtered by site and/or status.",
+    action_type="read",
+    data_model=OutreachTargetList,
+)
+async def list_link_building_targets(ctx, params: ListOutreachTargetsParams) -> ActionResult:
+    """Return tracked outreach targets."""
+    where = {}
+    if params.site_id:
+        where["site_id"] = params.site_id
+    if params.status:
+        where["status"] = params.status
+    page = await ctx.store.query("outreach_targets", where=where or None, limit=params.limit)
+    items = [_to_outreach_target(d) for d in page.data]
+    return ActionResult.success(
+        OutreachTargetList(items=items, total=len(items)),
+        summary=f"{len(items)} outreach target(s).",
+    )
+
+
+@chat.function(
+    "get_link_building_report",
+    description=(
+        "Read a summary of a site's link-building pipeline: counts by status, conversion "
+        "rate (link_acquired / total non-prospected), and the list of currently active "
+        "(contacted/replied) targets that need a follow-up."
+    ),
+    action_type="read",
+    data_model=LinkBuildingReport,
+)
+async def get_link_building_report(ctx, params: GetLinkBuildingReportParams) -> ActionResult:
+    """Aggregate outreach targets for one site into a pipeline report."""
+    page = await ctx.store.query("outreach_targets", where={"site_id": params.site_id}, limit=500)
+    if not page.data:
+        return ActionResult.error(
+            f"No outreach targets found for '{params.site_id}' yet. Add one with add_link_building_target.",
+            retryable=False,
+        )
+    by_status: dict[str, int] = {}
+    needs_doing: list[str] = []
+    for d in page.data:
+        status = d.data.get("status", "prospected")
+        by_status[status] = by_status.get(status, 0) + 1
+        if status in ("contacted", "replied"):
+            needs_doing.append(f"Follow up: {d.data.get('target_domain', d.id)} ({status})")
+    total = len(page.data)
+    acquired = by_status.get("link_acquired", 0)
+    outreached = total - by_status.get("prospected", 0)
+    # reply_rate_pct: of everyone actually contacted, how many responded in any way
+    # (replied/link_acquired/declined all count as a reply; no_response does not).
+    responded = by_status.get("replied", 0) + by_status.get("link_acquired", 0) + by_status.get("declined", 0)
+    reply_rate_pct = round(responded / outreached * 100.0, 1) if outreached else 0.0
+    acquisition_rate_pct = round(acquired / total * 100.0, 1) if total else 0.0
+    if not needs_doing:
+        needs_doing.append("No pending follow-ups -- every non-prospected target has a final outcome.")
+    report = LinkBuildingReport(
+        id=params.site_id, title=f"Link building — {params.site_id}",
+        site_id=params.site_id, total_targets=total, by_status=by_status,
+        links_acquired=acquired, reply_rate_pct=reply_rate_pct,
+        acquisition_rate_pct=acquisition_rate_pct, needs_doing=needs_doing,
+    )
+    return ActionResult.success(report, summary=f"{total} outreach target(s), {acquired} link(s) acquired.")
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -2047,7 +2216,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         "site_competitors", "content_audits", "cannibalization_findings",
         "existing_content_items", "content_authors",
         "content_decay_readings", "content_decay_reports",
-        "kpi_snapshots", "kpi_dashboards",
+        "kpi_snapshots", "kpi_dashboards", "outreach_targets",
     ]
     removed = {}
     for coll in collections:
@@ -2073,6 +2242,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         authors_removed=removed["content_authors"],
         decay_readings_removed=removed["content_decay_readings"] + removed["content_decay_reports"],
         kpi_snapshots_removed=removed["kpi_snapshots"] + removed["kpi_dashboards"],
+        outreach_targets_removed=removed["outreach_targets"],
         kept_site_ids=kept_site_ids,
     )
     total = sum(removed.values())
@@ -2086,7 +2256,8 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
             f"{removed['cannibalization_findings']} cannibalization findings, "
             f"{removed['content_authors']} authors, "
             f"{removed['content_decay_readings'] + removed['content_decay_reports']} decay records, "
-            f"{removed['kpi_snapshots'] + removed['kpi_dashboards']} KPI records). "
+            f"{removed['kpi_snapshots'] + removed['kpi_dashboards']} KPI records, "
+            f"{removed['outreach_targets']} outreach targets). "
             f"Kept {len(kept_site_ids)} connected site(s): {', '.join(kept_site_ids) or '—'}."
         ),
         refresh_panels=["queue", "sources"],

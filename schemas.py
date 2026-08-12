@@ -611,6 +611,7 @@ class PurgeResult(sdl.Entity):
     authors_removed: int = 0
     decay_readings_removed: int = 0
     kpi_snapshots_removed: int = 0
+    outreach_targets_removed: int = 0
     kept_site_ids: list[str] = Field(default_factory=list)
 
 
@@ -620,6 +621,87 @@ class CheckCannibalizationParams(BaseModel):
         "", description="Optional: a NEW topic/keyword being considered for a fresh article — "
                         "checked against existing content so a duplicate topic is caught BEFORE writing, "
                         "not after. Empty = audit existing articles against each other only.")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 6: active link-building / outreach workflow
+#
+# Turns the currently passive backlink monitoring (DataForSEO tracks a
+# competitor's backlink profile) into an ACTIVE, human-run outreach
+# pipeline: concrete named targets with a real lifecycle status, so
+# link-building becomes trackable work instead of only observed data.
+# ──────────────────────────────────────────────────────────────────────────
+
+_OUTREACH_STATUSES = (
+    "prospected", "contacted", "replied", "link_acquired", "declined", "no_response"
+)
+
+
+class CreateOutreachTargetParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    target_domain: str = Field(min_length=1, description="Domain being targeted for a backlink/mention, e.g. 'example-blog.com'")
+    target_url: str = Field("", description="Specific page URL on that domain, if known (e.g. a broken-link or resource page)")
+    tactic: str = Field(
+        "guest_post",
+        description="Link-building tactic: guest_post|broken_link|resource_page|linkable_asset|digital_pr|mention_upgrade|other",
+    )
+    linked_article_url: str = Field("", description="This site's own published URL being pitched/linked, if applicable")
+    contact_name: str = Field("", description="Real name of the contact person at the target site, if known")
+    contact_email: str = Field("", description="Contact email for outreach, if known")
+    notes: str = Field("", description="Freeform context: why this target, what pitch angle, source of the lead")
+
+
+class UpdateOutreachStatusParams(BaseModel):
+    outreach_id: str = Field(description="UUID of the outreach target to update — from list_outreach_targets, never invented")
+    status: str = Field(description=f"New status: one of {', '.join(_OUTREACH_STATUSES)}")
+    notes: str = Field("", description="Optional note to append about this status change, e.g. reply content or reason for decline")
+    acquired_url: str = Field("", description="The actual URL where the backlink now lives, set when status='link_acquired'")
+
+
+class OutreachTarget(sdl.Entity):
+    """One tracked link-building outreach effort — a named target site,
+    tactic, and its real lifecycle status. This is deliberately manual
+    and human-run: no outreach email is ever sent by this app."""
+    site_id: str = ""
+    target_domain: str = ""
+    target_url: str = ""
+    tactic: str = "guest_post"
+    linked_article_url: str = ""
+    contact_name: str = ""
+    contact_email: str = ""
+    status: str = "prospected"
+    acquired_url: str = ""
+    notes: str = ""
+    status_history: list[dict] = Field(default_factory=list, description="Chronological [{status, at}] log of every status change")
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class OutreachTargetList(sdl.EntityList[OutreachTarget]):
+    pass
+
+
+class ListOutreachTargetsParams(BaseModel):
+    site_id: str = Field("", description="Optional site filter. Empty = all sites.")
+    status: str = Field("", description="Optional status filter, e.g. 'contacted', 'link_acquired'.")
+    limit: int = Field(50, description="Max items to return (1-100)")
+
+
+class LinkBuildingReport(sdl.Entity):
+    """Summary of a site's active outreach pipeline -- counts by status
+    plus a simple reply/acquisition rate, so link-building is a visible
+    funnel instead of a pile of untracked emails."""
+    site_id: str = ""
+    total_targets: int = 0
+    by_status: dict[str, int] = Field(default_factory=dict)
+    reply_rate_pct: float = 0.0  # replied+link_acquired+declined / (contacted+replied+link_acquired+declined+no_response)
+    acquisition_rate_pct: float = 0.0  # link_acquired / total_targets
+    links_acquired: int = 0
+    needs_doing: list[str] = Field(default_factory=list)
+
+
+class GetLinkBuildingReportParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
 
 
 # ──────────────────────────────────────────────────────────────────────────

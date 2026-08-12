@@ -9,7 +9,7 @@ import re
 
 from schemas import (
     ArticleBrief, ContentCalendarEntry, Opportunity, QueueItem, SiteProfile,
-    SiteCompetitorProfile,
+    SiteCompetitorProfile, OutreachTarget,
 )
 
 _INTENT_COMMERCIAL_HINTS = (
@@ -262,6 +262,27 @@ def to_site_competitor(d) -> SiteCompetitorProfile:
         competing_topics=data.get("competing_topics", []),
         strengths=data.get("strengths", []),
         weaknesses=data.get("weaknesses", []),
+    )
+
+
+def to_outreach_target(d) -> OutreachTarget:
+    data = d.data
+    return OutreachTarget(
+        id=d.id,
+        title=data.get("target_domain", d.id),
+        site_id=data.get("site_id", ""),
+        target_domain=data.get("target_domain", ""),
+        target_url=data.get("target_url", ""),
+        tactic=data.get("tactic", "guest_post"),
+        linked_article_url=data.get("linked_article_url", ""),
+        contact_name=data.get("contact_name", ""),
+        contact_email=data.get("contact_email", ""),
+        status=data.get("status", "prospected"),
+        acquired_url=data.get("acquired_url", ""),
+        notes=data.get("notes", ""),
+        status_history=data.get("status_history", []),
+        created_at=data.get("created_at", ""),
+        updated_at=data.get("updated_at", ""),
     )
 
 

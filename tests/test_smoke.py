@@ -21,6 +21,8 @@ from schemas import (
     ContentPerformanceSignal, TrackContentDecayParams, GetContentDecayParams,
     RecordEditorialSignoffParams,
     RecordKpiSnapshotParams, GetKpiDashboardParams,
+    CreateOutreachTargetParams, UpdateOutreachStatusParams, ListOutreachTargetsParams,
+    GetLinkBuildingReportParams,
 )
 
 
@@ -1770,3 +1772,111 @@ async def test_purge_pipeline_data_removes_kpi_records():
     result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
     assert result.status == "success"
     assert result.data.kpi_snapshots_removed >= 2  # 1 snapshot + 1 dashboard report
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 6: active link-building / outreach workflow
+# ──────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_add_link_building_target_requires_existing_site():
+    ctx = MockContext()
+    result = await m.add_link_building_target(ctx, CreateOutreachTargetParams(
+        site_id="nope.md", target_domain="example-blog.com",
+    ))
+    assert result.status == "error"
+    assert "create_site_profile" in result.error
+
+
+@pytest.mark.asyncio
+async def test_add_link_building_target_starts_prospected():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    result = await m.add_link_building_target(ctx, CreateOutreachTargetParams(
+        site_id="g4s.md", target_domain="example-blog.com", tactic="guest_post",
+    ))
+    assert result.status == "success"
+    assert result.data.status == "prospected"
+    assert len(result.data.status_history) == 1
+
+
+@pytest.mark.asyncio
+async def test_update_outreach_status_rejects_invalid_status():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    created = await m.add_link_building_target(ctx, CreateOutreachTargetParams(
+        site_id="g4s.md", target_domain="example-blog.com",
+    ))
+    bad = await m.update_outreach_status(ctx, UpdateOutreachStatusParams(
+        outreach_id=created.data.id, status="not_a_real_status",
+    ))
+    assert bad.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_update_outreach_status_to_link_acquired_records_url():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    created = await m.add_link_building_target(ctx, CreateOutreachTargetParams(
+        site_id="g4s.md", target_domain="example-blog.com",
+    ))
+    ok = await m.update_outreach_status(ctx, UpdateOutreachStatusParams(
+        outreach_id=created.data.id, status="link_acquired", acquired_url="https://example-blog.com/post-with-link",
+    ))
+    assert ok.status == "success"
+    assert ok.data.status == "link_acquired"
+    assert ok.data.acquired_url == "https://example-blog.com/post-with-link"
+    assert len(ok.data.status_history) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_link_building_targets_filters_by_status():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    a = await m.add_link_building_target(ctx, CreateOutreachTargetParams(site_id="g4s.md", target_domain="a.com"))
+    await m.add_link_building_target(ctx, CreateOutreachTargetParams(site_id="g4s.md", target_domain="b.com"))
+    await m.update_outreach_status(ctx, UpdateOutreachStatusParams(outreach_id=a.data.id, status="contacted"))
+
+    all_targets = await m.list_link_building_targets(ctx, ListOutreachTargetsParams(site_id="g4s.md"))
+    assert all_targets.data.total == 2
+
+    contacted_only = await m.list_link_building_targets(ctx, ListOutreachTargetsParams(site_id="g4s.md", status="contacted"))
+    assert contacted_only.data.total == 1
+
+
+@pytest.mark.asyncio
+async def test_get_link_building_report_requires_targets():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    result = await m.get_link_building_report(ctx, GetLinkBuildingReportParams(site_id="g4s.md"))
+    assert result.status == "error"
+    assert "add_link_building_target" in result.error
+
+
+@pytest.mark.asyncio
+async def test_get_link_building_report_computes_conversion_and_followups():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    a = await m.add_link_building_target(ctx, CreateOutreachTargetParams(site_id="g4s.md", target_domain="a.com"))
+    b = await m.add_link_building_target(ctx, CreateOutreachTargetParams(site_id="g4s.md", target_domain="b.com"))
+    await m.add_link_building_target(ctx, CreateOutreachTargetParams(site_id="g4s.md", target_domain="c.com"))
+
+    await m.update_outreach_status(ctx, UpdateOutreachStatusParams(outreach_id=a.data.id, status="contacted"))
+    await m.update_outreach_status(ctx, UpdateOutreachStatusParams(outreach_id=b.data.id, status="link_acquired", acquired_url="https://b.com/x"))
+
+    report = await m.get_link_building_report(ctx, GetLinkBuildingReportParams(site_id="g4s.md"))
+    assert report.status == "success"
+    assert report.data.total_targets == 3
+    assert report.data.links_acquired == 1
+    assert any("a.com" in n for n in report.data.needs_doing)
+
+
+@pytest.mark.asyncio
+async def test_purge_pipeline_data_removes_outreach_targets():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.add_link_building_target(ctx, CreateOutreachTargetParams(site_id="g4s.md", target_domain="a.com"))
+    from schemas import PurgePipelineDataParams
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    assert result.status == "success"
+    assert result.data.outreach_targets_removed >= 1

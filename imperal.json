@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.13",
   "app_id": "content-strategy-app",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "name": "Content Strategy",
   "description": "Plans what to write next for your sites. Discovers content opportunities from Google Search Console data, clusters them into topics, generates structured article briefs (with image requirements for downstream generation), and tracks each idea through an editorial queue from idea to published.",
   "icon": "icon.svg",
@@ -1208,6 +1208,767 @@
         "title": "SiteCompetitorProfileList",
         "type": "object",
         "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "add_link_building_target",
+      "description": "Add a concrete link-building/outreach target for a site -- a named domain (and optionally a specific page) to pursue for a backlink or mention, with the tactic being used (guest_post, broken_link, resource_page, linkable_asset, digital_pr, mention_upgrade, other). Starts at status 'prospected'. Use update_outreach_status to move it forward as real outreach happens.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:outreach_target"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "target_domain": {
+            "description": "Domain being targeted for a backlink/mention, e.g. 'example-blog.com'",
+            "minLength": 1,
+            "title": "Target Domain",
+            "type": "string"
+          },
+          "target_url": {
+            "default": "",
+            "description": "Specific page URL on that domain, if known (e.g. a broken-link or resource page)",
+            "title": "Target Url",
+            "type": "string"
+          },
+          "tactic": {
+            "default": "guest_post",
+            "description": "Link-building tactic: guest_post|broken_link|resource_page|linkable_asset|digital_pr|mention_upgrade|other",
+            "title": "Tactic",
+            "type": "string"
+          },
+          "linked_article_url": {
+            "default": "",
+            "description": "This site's own published URL being pitched/linked, if applicable",
+            "title": "Linked Article Url",
+            "type": "string"
+          },
+          "contact_name": {
+            "default": "",
+            "description": "Real name of the contact person at the target site, if known",
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "contact_email": {
+            "default": "",
+            "description": "Contact email for outreach, if known",
+            "title": "Contact Email",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "description": "Freeform context: why this target, what pitch angle, source of the lead",
+            "title": "Notes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id",
+          "target_domain"
+        ],
+        "title": "CreateOutreachTargetParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One tracked link-building outreach effort \u2014 a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "default": "prospected",
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "target_domain": {
+            "default": "",
+            "title": "Target Domain",
+            "type": "string"
+          },
+          "target_url": {
+            "default": "",
+            "title": "Target Url",
+            "type": "string"
+          },
+          "tactic": {
+            "default": "guest_post",
+            "title": "Tactic",
+            "type": "string"
+          },
+          "linked_article_url": {
+            "default": "",
+            "title": "Linked Article Url",
+            "type": "string"
+          },
+          "contact_name": {
+            "default": "",
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "contact_email": {
+            "default": "",
+            "title": "Contact Email",
+            "type": "string"
+          },
+          "acquired_url": {
+            "default": "",
+            "title": "Acquired Url",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "status_history": {
+            "description": "Chronological [{status, at}] log of every status change",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Status History",
+            "type": "array"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "default": "",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "OutreachTarget",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "outreach_target_created",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "update_outreach_status",
+      "description": "Move a link-building outreach target to a new status: prospected|contacted|replied|link_acquired|declined|no_response. Pass acquired_url when moving to 'link_acquired' to record where the backlink actually landed.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "update:outreach_target"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "outreach_id": {
+            "description": "UUID of the outreach target to update \u2014 from list_outreach_targets, never invented",
+            "title": "Outreach Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "New status: one of prospected, contacted, replied, link_acquired, declined, no_response",
+            "title": "Status",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "description": "Optional note to append about this status change, e.g. reply content or reason for decline",
+            "title": "Notes",
+            "type": "string"
+          },
+          "acquired_url": {
+            "default": "",
+            "description": "The actual URL where the backlink now lives, set when status='link_acquired'",
+            "title": "Acquired Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outreach_id",
+          "status"
+        ],
+        "title": "UpdateOutreachStatusParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One tracked link-building outreach effort \u2014 a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "default": "prospected",
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "target_domain": {
+            "default": "",
+            "title": "Target Domain",
+            "type": "string"
+          },
+          "target_url": {
+            "default": "",
+            "title": "Target Url",
+            "type": "string"
+          },
+          "tactic": {
+            "default": "guest_post",
+            "title": "Tactic",
+            "type": "string"
+          },
+          "linked_article_url": {
+            "default": "",
+            "title": "Linked Article Url",
+            "type": "string"
+          },
+          "contact_name": {
+            "default": "",
+            "title": "Contact Name",
+            "type": "string"
+          },
+          "contact_email": {
+            "default": "",
+            "title": "Contact Email",
+            "type": "string"
+          },
+          "acquired_url": {
+            "default": "",
+            "title": "Acquired Url",
+            "type": "string"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "status_history": {
+            "description": "Chronological [{status, at}] log of every status change",
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Status History",
+            "type": "array"
+          },
+          "created_at": {
+            "default": "",
+            "title": "Created At",
+            "type": "string"
+          },
+          "updated_at": {
+            "default": "",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "OutreachTarget",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "outreach_status_updated",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "list_link_building_targets",
+      "description": "List link-building/outreach targets, optionally filtered by site and/or status.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "default": "",
+            "description": "Optional site filter. Empty = all sites.",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "",
+            "description": "Optional status filter, e.g. 'contacted', 'link_acquired'.",
+            "title": "Status",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Max items to return (1-100)",
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ListOutreachTargetsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "OutreachTarget": {
+            "description": "One tracked link-building outreach effort \u2014 a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "default": "prospected",
+                "title": "Status",
+                "type": "string"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "target_domain": {
+                "default": "",
+                "title": "Target Domain",
+                "type": "string"
+              },
+              "target_url": {
+                "default": "",
+                "title": "Target Url",
+                "type": "string"
+              },
+              "tactic": {
+                "default": "guest_post",
+                "title": "Tactic",
+                "type": "string"
+              },
+              "linked_article_url": {
+                "default": "",
+                "title": "Linked Article Url",
+                "type": "string"
+              },
+              "contact_name": {
+                "default": "",
+                "title": "Contact Name",
+                "type": "string"
+              },
+              "contact_email": {
+                "default": "",
+                "title": "Contact Email",
+                "type": "string"
+              },
+              "acquired_url": {
+                "default": "",
+                "title": "Acquired Url",
+                "type": "string"
+              },
+              "notes": {
+                "default": "",
+                "title": "Notes",
+                "type": "string"
+              },
+              "status_history": {
+                "description": "Chronological [{status, at}] log of every status change",
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "title": "Status History",
+                "type": "array"
+              },
+              "created_at": {
+                "default": "",
+                "title": "Created At",
+                "type": "string"
+              },
+              "updated_at": {
+                "default": "",
+                "title": "Updated At",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "OutreachTarget",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/OutreachTarget"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "OutreachTargetList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "get_link_building_report",
+      "description": "Read a summary of a site's link-building pipeline: counts by status, conversion rate (link_acquired / total non-prospected), and the list of currently active (contacted/replied) targets that need a follow-up.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "GetLinkBuildingReportParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Summary of a site's active outreach pipeline -- counts by status\nplus a simple reply/acquisition rate, so link-building is a visible\nfunnel instead of a pile of untracked emails.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "total_targets": {
+            "default": 0,
+            "title": "Total Targets",
+            "type": "integer"
+          },
+          "by_status": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "By Status",
+            "type": "object"
+          },
+          "reply_rate_pct": {
+            "default": 0.0,
+            "title": "Reply Rate Pct",
+            "type": "number"
+          },
+          "acquisition_rate_pct": {
+            "default": 0.0,
+            "title": "Acquisition Rate Pct",
+            "type": "number"
+          },
+          "links_acquired": {
+            "default": 0,
+            "title": "Links Acquired",
+            "type": "integer"
+          },
+          "needs_doing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needs Doing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "LinkBuildingReport",
+        "type": "object",
+        "x-sdl": "entity"
       },
       "event": "",
       "background": false,
@@ -6412,6 +7173,11 @@
           "kpi_snapshots_removed": {
             "default": 0,
             "title": "Kpi Snapshots Removed",
+            "type": "integer"
+          },
+          "outreach_targets_removed": {
+            "default": 0,
+            "title": "Outreach Targets Removed",
             "type": "integer"
           },
           "kept_site_ids": {

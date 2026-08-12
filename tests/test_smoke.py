@@ -20,6 +20,7 @@ from schemas import (
     UpdateSiteProfileParams,
     ContentPerformanceSignal, TrackContentDecayParams, GetContentDecayParams,
     RecordEditorialSignoffParams,
+    RecordKpiSnapshotParams, GetKpiDashboardParams,
 )
 
 
@@ -1713,3 +1714,59 @@ async def test_record_editorial_signoff_edited_only_does_not_satisfy_fact_check_
     ))
     assert result.status == "error"
     assert "FACT_CHECK_REQUIRED" in result.error
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 5: unified KPI dashboard
+# ──────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_record_kpi_snapshot_requires_existing_site():
+    ctx = MockContext()
+    result = await m.record_kpi_snapshot(ctx, RecordKpiSnapshotParams(
+        site_id="nope.md", period_label="2026-07", ga4_sessions=100,
+    ))
+    assert result.status == "error"
+    assert "create_site_profile" in result.error
+
+
+@pytest.mark.asyncio
+async def test_get_kpi_dashboard_requires_prior_snapshot():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    result = await m.get_kpi_dashboard(ctx, GetKpiDashboardParams(site_id="g4s.md"))
+    assert result.status == "error"
+    assert "record_kpi_snapshot" in result.error
+
+
+@pytest.mark.asyncio
+async def test_kpi_dashboard_shows_trend_after_two_snapshots():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.record_kpi_snapshot(ctx, RecordKpiSnapshotParams(
+        site_id="g4s.md", period_label="2026-06",
+        ga4_sessions=1000, ga4_conversions=20, gsc_clicks=500, dataforseo_avg_rank=12.0,
+    ))
+    result = await m.record_kpi_snapshot(ctx, RecordKpiSnapshotParams(
+        site_id="g4s.md", period_label="2026-07",
+        ga4_sessions=1200, ga4_conversions=15, gsc_clicks=400, dataforseo_avg_rank=15.0,
+    ))
+    assert result.status == "success"
+
+    dash = await m.get_kpi_dashboard(ctx, GetKpiDashboardParams(site_id="g4s.md"))
+    assert dash.status == "success"
+    assert dash.data.latest_period == "2026-07"
+    assert len(dash.data.trend) > 0
+    assert any("conversions dropped" in n for n in dash.data.needs_doing)
+    assert any("keyword rank got worse" in n for n in dash.data.needs_doing)
+
+
+@pytest.mark.asyncio
+async def test_purge_pipeline_data_removes_kpi_records():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await m.record_kpi_snapshot(ctx, RecordKpiSnapshotParams(site_id="g4s.md", period_label="2026-07", ga4_sessions=100))
+    from schemas import PurgePipelineDataParams
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    assert result.status == "success"
+    assert result.data.kpi_snapshots_removed >= 2  # 1 snapshot + 1 dashboard report

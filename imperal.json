@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.13",
   "app_id": "content-strategy-app",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "name": "Content Strategy",
   "description": "Plans what to write next for your sites. Discovers content opportunities from Google Search Console data, clusters them into topics, generates structured article briefs (with image requirements for downstream generation), and tracks each idea through an editorial queue from idea to published.",
   "icon": "icon.svg",
@@ -2414,6 +2414,418 @@
           "title"
         ],
         "title": "ContentDecayReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "record_kpi_snapshot",
+      "description": "Record one periodic combined KPI snapshot for a site -- GA4 sessions/users/conversions, Search Console clicks/impressions/position, and DataForSEO rank tracking/backlinks, all already fetched by the caller from those connectors (this app does not call them itself). Call this once per period (e.g. monthly) per site; get_kpi_dashboard then shows the latest snapshot plus its trend against the previous one.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:kpi_snapshot"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "period_label": {
+            "description": "Reporting period label, e.g. '2026-07' or '2026-W28' \u2014 used to order snapshots and label the trend",
+            "title": "Period Label",
+            "type": "string"
+          },
+          "ga4_sessions": {
+            "default": 0,
+            "description": "GA4 sessions for the period (from get_overview/compare_periods)",
+            "title": "Ga4 Sessions",
+            "type": "integer"
+          },
+          "ga4_users": {
+            "default": 0,
+            "description": "GA4 active/total users for the period",
+            "title": "Ga4 Users",
+            "type": "integer"
+          },
+          "ga4_conversions": {
+            "default": 0,
+            "description": "GA4 key events (conversions) for the period",
+            "title": "Ga4 Conversions",
+            "type": "integer"
+          },
+          "gsc_clicks": {
+            "default": 0,
+            "description": "Search Console clicks for the period (from top_queries aggregated)",
+            "title": "Gsc Clicks",
+            "type": "integer"
+          },
+          "gsc_impressions": {
+            "default": 0,
+            "description": "Search Console impressions for the period",
+            "title": "Gsc Impressions",
+            "type": "integer"
+          },
+          "gsc_avg_position": {
+            "default": 0.0,
+            "description": "Search Console average position for the period",
+            "title": "Gsc Avg Position",
+            "type": "number"
+          },
+          "dataforseo_avg_rank": {
+            "default": 0.0,
+            "description": "Average tracked-keyword rank for the period (from list_tracked_keywords)",
+            "title": "Dataforseo Avg Rank",
+            "type": "number"
+          },
+          "dataforseo_keywords_top10": {
+            "default": 0,
+            "description": "Count of tracked keywords ranking in the top 10 for the period",
+            "title": "Dataforseo Keywords Top10",
+            "type": "integer"
+          },
+          "referring_domains": {
+            "default": 0,
+            "description": "Backlink referring-domain count for the period (from get_backlink_profile), 0 if not tracked",
+            "title": "Referring Domains",
+            "type": "integer"
+          },
+          "notes": {
+            "default": "",
+            "description": "Optional free-text context for this snapshot, e.g. 'algorithm update' or 'launched 3 new articles'",
+            "title": "Notes",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id",
+          "period_label"
+        ],
+        "title": "RecordKpiSnapshotParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One recorded periodic KPI reading for a site, combining GA4 + GSC +\nDataForSEO numbers the caller already fetched -- this app never calls\nthose connectors itself.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "period_label": {
+            "default": "",
+            "title": "Period Label",
+            "type": "string"
+          },
+          "ga4_sessions": {
+            "default": 0,
+            "title": "Ga4 Sessions",
+            "type": "integer"
+          },
+          "ga4_users": {
+            "default": 0,
+            "title": "Ga4 Users",
+            "type": "integer"
+          },
+          "ga4_conversions": {
+            "default": 0,
+            "title": "Ga4 Conversions",
+            "type": "integer"
+          },
+          "gsc_clicks": {
+            "default": 0,
+            "title": "Gsc Clicks",
+            "type": "integer"
+          },
+          "gsc_impressions": {
+            "default": 0,
+            "title": "Gsc Impressions",
+            "type": "integer"
+          },
+          "gsc_avg_position": {
+            "default": 0.0,
+            "title": "Gsc Avg Position",
+            "type": "number"
+          },
+          "dataforseo_avg_rank": {
+            "default": 0.0,
+            "title": "Dataforseo Avg Rank",
+            "type": "number"
+          },
+          "dataforseo_keywords_top10": {
+            "default": 0,
+            "title": "Dataforseo Keywords Top10",
+            "type": "integer"
+          },
+          "referring_domains": {
+            "default": 0,
+            "title": "Referring Domains",
+            "type": "integer"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "recorded_at": {
+            "default": "",
+            "title": "Recorded At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "KpiSnapshot",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "kpi_snapshot_recorded",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "get_kpi_dashboard",
+      "description": "Read the unified KPI dashboard for a site: its latest recorded snapshot (GA4 + Search Console + DataForSEO combined) plus the trend against the previous period, in one place instead of three separate apps. Requires at least one record_kpi_snapshot call for the site.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "GetKpiDashboardParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "KpiTrendDelta": {
+            "description": "Change of one metric between the two most recent snapshots.",
+            "properties": {
+              "metric": {
+                "default": "",
+                "title": "Metric",
+                "type": "string"
+              },
+              "previous": {
+                "default": 0.0,
+                "title": "Previous",
+                "type": "number"
+              },
+              "current": {
+                "default": 0.0,
+                "title": "Current",
+                "type": "number"
+              },
+              "change_pct": {
+                "default": 0.0,
+                "title": "Change Pct",
+                "type": "number"
+              }
+            },
+            "title": "KpiTrendDelta",
+            "type": "object"
+          }
+        },
+        "description": "Unified view of a site's most recent KPI snapshot plus its trend\nagainst the previous one -- the single place to see GA4 + GSC +\nDataForSEO movement together instead of three separate apps.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "latest_period": {
+            "default": "",
+            "title": "Latest Period",
+            "type": "string"
+          },
+          "latest": {
+            "additionalProperties": true,
+            "title": "Latest",
+            "type": "object"
+          },
+          "trend": {
+            "items": {
+              "$ref": "#/$defs/KpiTrendDelta"
+            },
+            "title": "Trend",
+            "type": "array"
+          },
+          "history_periods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "History Periods",
+            "type": "array"
+          },
+          "needs_doing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Needs Doing",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "KpiDashboardReport",
         "type": "object",
         "x-sdl": "entity"
       },
@@ -5995,6 +6407,11 @@
           "decay_readings_removed": {
             "default": 0,
             "title": "Decay Readings Removed",
+            "type": "integer"
+          },
+          "kpi_snapshots_removed": {
+            "default": 0,
+            "title": "Kpi Snapshots Removed",
             "type": "integer"
           },
           "kept_site_ids": {

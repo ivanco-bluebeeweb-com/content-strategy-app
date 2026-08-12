@@ -610,6 +610,7 @@ class PurgeResult(sdl.Entity):
     cannibalization_findings_removed: int = 0
     authors_removed: int = 0
     decay_readings_removed: int = 0
+    kpi_snapshots_removed: int = 0
     kept_site_ids: list[str] = Field(default_factory=list)
 
 
@@ -619,3 +620,76 @@ class CheckCannibalizationParams(BaseModel):
         "", description="Optional: a NEW topic/keyword being considered for a fresh article — "
                         "checked against existing content so a duplicate topic is caught BEFORE writing, "
                         "not after. Empty = audit existing articles against each other only.")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 5: unified KPI dashboard
+#
+# Same pattern as QuerySignal / ContentPerformanceSignal: this app does not
+# call GA4, GSC, or DataForSEO connectors directly. The caller fetches each
+# connector's own numbers first (google-analytics-bluebee's get_overview /
+# compare_periods, google-search-console-connector's top_queries,
+# dataforseo-connector's list_tracked_keywords / get_backlink_profile) and
+# passes the resulting totals in here as one periodic snapshot.
+# ──────────────────────────────────────────────────────────────────────────
+
+class RecordKpiSnapshotParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    period_label: str = Field(description="Reporting period label, e.g. '2026-07' or '2026-W28' — used to order snapshots and label the trend")
+    ga4_sessions: int = Field(0, description="GA4 sessions for the period (from get_overview/compare_periods)")
+    ga4_users: int = Field(0, description="GA4 active/total users for the period")
+    ga4_conversions: int = Field(0, description="GA4 key events (conversions) for the period")
+    gsc_clicks: int = Field(0, description="Search Console clicks for the period (from top_queries aggregated)")
+    gsc_impressions: int = Field(0, description="Search Console impressions for the period")
+    gsc_avg_position: float = Field(0.0, description="Search Console average position for the period")
+    dataforseo_avg_rank: float = Field(0.0, description="Average tracked-keyword rank for the period (from list_tracked_keywords)")
+    dataforseo_keywords_top10: int = Field(0, description="Count of tracked keywords ranking in the top 10 for the period")
+    referring_domains: int = Field(0, description="Backlink referring-domain count for the period (from get_backlink_profile), 0 if not tracked")
+    notes: str = Field("", description="Optional free-text context for this snapshot, e.g. 'algorithm update' or 'launched 3 new articles'")
+
+
+class KpiSnapshot(sdl.Entity):
+    """One recorded periodic KPI reading for a site, combining GA4 + GSC +
+    DataForSEO numbers the caller already fetched -- this app never calls
+    those connectors itself."""
+    site_id: str = ""
+    period_label: str = ""
+    ga4_sessions: int = 0
+    ga4_users: int = 0
+    ga4_conversions: int = 0
+    gsc_clicks: int = 0
+    gsc_impressions: int = 0
+    gsc_avg_position: float = 0.0
+    dataforseo_avg_rank: float = 0.0
+    dataforseo_keywords_top10: int = 0
+    referring_domains: int = 0
+    notes: str = ""
+    recorded_at: str = ""
+
+
+class KpiSnapshotList(sdl.EntityList[KpiSnapshot]):
+    pass
+
+
+class KpiTrendDelta(BaseModel):
+    """Change of one metric between the two most recent snapshots."""
+    metric: str = ""
+    previous: float = 0.0
+    current: float = 0.0
+    change_pct: float = 0.0
+
+
+class KpiDashboardReport(sdl.Entity):
+    """Unified view of a site's most recent KPI snapshot plus its trend
+    against the previous one -- the single place to see GA4 + GSC +
+    DataForSEO movement together instead of three separate apps."""
+    site_id: str = ""
+    latest_period: str = ""
+    latest: dict[str, object] = Field(default_factory=dict)
+    trend: list[KpiTrendDelta] = Field(default_factory=list)
+    history_periods: list[str] = Field(default_factory=list)  # most recent first, up to 12
+    needs_doing: list[str] = Field(default_factory=list)
+
+
+class GetKpiDashboardParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")

@@ -41,6 +41,7 @@ from schemas import (
     AddSiteCompetitorParams, ListSiteCompetitorsParams,
     ContentAuditReport, RunContentAuditParams, GetContentAuditParams,
     ContentPerformanceSignal, TrackContentDecayParams, DecayingContentItem,
+    RecordKpiSnapshotParams, KpiSnapshot, KpiTrendDelta, KpiDashboardReport, GetKpiDashboardParams,
     ContentDecayReport, GetContentDecayParams,
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
     PurgePipelineDataParams, PurgeResult,
@@ -779,6 +780,148 @@ async def get_content_decay(ctx, params: GetContentDecayParams) -> ActionResult:
     d = page.data[0]
     report = ContentDecayReport(id=d.id, title=f"Content decay — {params.site_id}", **d.data)
     return ActionResult.success(report, summary=f"Decay report for '{params.site_id}' from {d.data.get('checked_at', '?')}.")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 5: unified KPI dashboard
+#
+# Same non-generative pattern as track_content_decay: this app never calls
+# GA4/GSC/DataForSEO connectors itself. The caller fetches each connector's
+# own numbers first and records one combined snapshot per period here.
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "record_kpi_snapshot",
+    description=(
+        "Record one periodic combined KPI snapshot for a site -- GA4 sessions/users/"
+        "conversions, Search Console clicks/impressions/position, and DataForSEO rank "
+        "tracking/backlinks, all already fetched by the caller from those connectors "
+        "(this app does not call them itself). Call this once per period (e.g. monthly) "
+        "per site; get_kpi_dashboard then shows the latest snapshot plus its trend "
+        "against the previous one."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:kpi_snapshot"],
+    event="kpi_snapshot_recorded",
+    data_model=KpiSnapshot,
+)
+async def record_kpi_snapshot(ctx, params: RecordKpiSnapshotParams) -> ActionResult:
+    """Store one periodic KPI snapshot, then refresh the site's dashboard report."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"Site profile '{params.site_id}' not found. Create it first with create_site_profile.",
+            retryable=False,
+        )
+
+    payload = {
+        "site_id": params.site_id,
+        "period_label": params.period_label,
+        "ga4_sessions": params.ga4_sessions,
+        "ga4_users": params.ga4_users,
+        "ga4_conversions": params.ga4_conversions,
+        "gsc_clicks": params.gsc_clicks,
+        "gsc_impressions": params.gsc_impressions,
+        "gsc_avg_position": params.gsc_avg_position,
+        "dataforseo_avg_rank": params.dataforseo_avg_rank,
+        "dataforseo_keywords_top10": params.dataforseo_keywords_top10,
+        "referring_domains": params.referring_domains,
+        "notes": params.notes,
+        "recorded_at": ctx.time.now().isoformat() if hasattr(ctx, "time") and hasattr(ctx.time, "now") else "",
+    }
+    existing = await ctx.store.query(
+        "kpi_snapshots", where={"site_id": params.site_id, "period_label": params.period_label}, limit=1,
+    )
+    if existing.data:
+        await ctx.store.update("kpi_snapshots", existing.data[0].id, payload)
+        snap_id = existing.data[0].id
+    else:
+        created = await ctx.store.create("kpi_snapshots", payload)
+        snap_id = created.id
+
+    await _rebuild_kpi_dashboard(ctx, params.site_id)
+
+    snapshot = KpiSnapshot(id=snap_id, title=f"KPI {params.period_label} — {params.site_id}", **payload)
+    return ActionResult.success(
+        snapshot,
+        summary=f"Recorded KPI snapshot for '{params.site_id}' / {params.period_label}.",
+    )
+
+
+async def _rebuild_kpi_dashboard(ctx, site_id: str) -> None:
+    """Recompute and persist the dashboard report from all stored snapshots."""
+    page = await ctx.store.query("kpi_snapshots", where={"site_id": site_id}, limit=200)
+    rows = sorted(page.data, key=lambda d: d.data.get("period_label", ""))
+    if not rows:
+        return
+
+    latest = rows[-1].data
+    history_periods = [r.data.get("period_label", "") for r in rows[::-1]][:12]
+
+    trend: list[KpiTrendDelta] = []
+    needs_doing: list[str] = []
+    if len(rows) >= 2:
+        prev = rows[-2].data
+        metrics = [
+            ("GA4 sessions", "ga4_sessions"), ("GA4 users", "ga4_users"),
+            ("GA4 conversions", "ga4_conversions"), ("GSC clicks", "gsc_clicks"),
+            ("GSC impressions", "gsc_impressions"), ("GSC avg position", "gsc_avg_position"),
+            ("DataForSEO avg rank", "dataforseo_avg_rank"),
+            ("DataForSEO keywords top10", "dataforseo_keywords_top10"),
+            ("Referring domains", "referring_domains"),
+        ]
+        for label, key in metrics:
+            prev_v = float(prev.get(key, 0) or 0)
+            cur_v = float(latest.get(key, 0) or 0)
+            change_pct = ((cur_v - prev_v) / prev_v * 100.0) if prev_v else (100.0 if cur_v else 0.0)
+            trend.append(KpiTrendDelta(metric=label, previous=prev_v, current=cur_v, change_pct=round(change_pct, 1)))
+        if latest.get("gsc_clicks", 0) < prev.get("gsc_clicks", 0):
+            needs_doing.append("GSC clicks dropped period-over-period — check track_content_decay for which URLs are losing traffic.")
+        if latest.get("ga4_conversions", 0) < prev.get("ga4_conversions", 0):
+            needs_doing.append("GA4 conversions dropped period-over-period — review recent published content and CTAs.")
+        if latest.get("dataforseo_avg_rank", 0) > prev.get("dataforseo_avg_rank", 0) and prev.get("dataforseo_avg_rank", 0):
+            needs_doing.append("Average tracked keyword rank got worse — check DataForSEO Connector's keyword history for specifics.")
+    else:
+        needs_doing.append("Only one snapshot recorded so far — trend will appear once a second period is recorded.")
+
+    report_payload = {
+        "site_id": site_id,
+        "latest_period": latest.get("period_label", ""),
+        "latest": latest,
+        "trend": [t.model_dump() for t in trend],
+        "history_periods": history_periods,
+        "needs_doing": needs_doing,
+    }
+    existing_report = await ctx.store.query("kpi_dashboards", where={"site_id": site_id}, limit=1)
+    if existing_report.data:
+        await ctx.store.update("kpi_dashboards", existing_report.data[0].id, report_payload)
+    else:
+        await ctx.store.create("kpi_dashboards", report_payload)
+
+
+@chat.function(
+    "get_kpi_dashboard",
+    description=(
+        "Read the unified KPI dashboard for a site: its latest recorded snapshot "
+        "(GA4 + Search Console + DataForSEO combined) plus the trend against the "
+        "previous period, in one place instead of three separate apps. "
+        "Requires at least one record_kpi_snapshot call for the site."
+    ),
+    action_type="read",
+    data_model=KpiDashboardReport,
+)
+async def get_kpi_dashboard(ctx, params: GetKpiDashboardParams) -> ActionResult:
+    """Read back the most recently built KPI dashboard report for a site."""
+    page = await ctx.store.query("kpi_dashboards", where={"site_id": params.site_id}, limit=1)
+    if not page.data:
+        return ActionResult.error(
+            f"No KPI dashboard found for '{params.site_id}' yet. Run record_kpi_snapshot first.",
+            retryable=False,
+        )
+    d = page.data[0]
+    report = KpiDashboardReport(id=d.id, title=f"KPI dashboard — {params.site_id}", **d.data)
+    return ActionResult.success(report, summary=f"KPI dashboard for '{params.site_id}', latest period {d.data.get('latest_period', '?')}.")
 
 
 @chat.function(
@@ -1904,6 +2047,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         "site_competitors", "content_audits", "cannibalization_findings",
         "existing_content_items", "content_authors",
         "content_decay_readings", "content_decay_reports",
+        "kpi_snapshots", "kpi_dashboards",
     ]
     removed = {}
     for coll in collections:
@@ -1928,6 +2072,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         cannibalization_findings_removed=removed["cannibalization_findings"],
         authors_removed=removed["content_authors"],
         decay_readings_removed=removed["content_decay_readings"] + removed["content_decay_reports"],
+        kpi_snapshots_removed=removed["kpi_snapshots"] + removed["kpi_dashboards"],
         kept_site_ids=kept_site_ids,
     )
     total = sum(removed.values())
@@ -1940,7 +2085,8 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
             f"{removed['content_audits']} content audits, "
             f"{removed['cannibalization_findings']} cannibalization findings, "
             f"{removed['content_authors']} authors, "
-            f"{removed['content_decay_readings'] + removed['content_decay_reports']} decay records). "
+            f"{removed['content_decay_readings'] + removed['content_decay_reports']} decay records, "
+            f"{removed['kpi_snapshots'] + removed['kpi_dashboards']} KPI records). "
             f"Kept {len(kept_site_ids)} connected site(s): {', '.join(kept_site_ids) or '—'}."
         ),
         refresh_panels=["queue", "sources"],

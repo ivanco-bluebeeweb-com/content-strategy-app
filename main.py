@@ -1610,6 +1610,37 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
                 retryable=False,
             )
 
+    # BRIEF TITLE LANGUAGE: an Opportunity's primary_query is language-neutral
+    # storage -- it is literally whatever text the query/topic was first
+    # discovered in (e.g. Russian GSC data), with no per-language variants.
+    # create_brief supports one brief per language for the SAME opportunity,
+    # so reusing that stored text as-is for every language would silently
+    # give a Romanian brief a Russian title (exactly the bug reported: a RU
+    # brief and its RO sibling both titled in Russian). Require the caller
+    # to pass the REAL query text for this language (target_query) whenever
+    # the stored primary_query's script doesn't match target_language --
+    # inventing a translation here would be fabricating brand/content copy,
+    # not fixing a bug, so we gate instead of guessing.
+    brief_title_source = params.target_query.strip() or opp.get("primary_query", "")
+    if not params.target_query.strip():
+        query_script = _detect_language_fallback(opp.get("primary_query", ""), "")
+        script_matches = (
+            query_script == "unknown"
+            or (lang_key == "ru" and query_script == "ru")
+            or (lang_key != "ru" and query_script == "latin")
+        )
+        if not script_matches:
+            return ActionResult.error(
+                f"TARGET_QUERY_REQUIRED: this opportunity's stored query "
+                f"('{opp.get('primary_query', '')}') is not written in "
+                f"'{target_language}'. Pass target_query with the real "
+                f"query/title text for '{target_language}' (e.g. from that "
+                f"language's own Search Console data) -- reusing the stored "
+                f"text as-is would give this brief a title in the wrong language.",
+                retryable=False,
+                code="TARGET_QUERY_REQUIRED",
+            )
+
     # Outline skeleton labels are OUR OWN scaffolding text (not brand copy),
     # so they can be honestly localized by target_language. site_profile's
     # business_description/cta_default are single unlocalized strings (see
@@ -1649,7 +1680,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         or profile.get("cta_default", "contact us")
     )
     outline = [
-        f"H1: {opp.get('primary_query', '').capitalize()}",
+        f"H1: {brief_title_source.capitalize()}",
         labels["intro"],
         labels["main"],
         labels["practical"],
@@ -1705,7 +1736,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         {
             "site_id": opp.get("site_id", ""),
             "opportunity_id": params.opportunity_id,
-            "working_title": opp.get("primary_query", "").capitalize(),
+            "working_title": brief_title_source.capitalize(),
             "target_language": target_language,
             "target_audience": (
                 profile.get("business_description_i18n", {}).get(target_language)

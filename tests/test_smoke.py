@@ -1085,22 +1085,67 @@ async def test_create_brief_supports_one_brief_per_language():
     ))
     opp_id = discovered.data.items[0].id
 
-    ru_brief = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ru"))
+    # The opportunity's stored primary_query is Latin-script (Romanian), so a
+    # 'ru' brief needs its own real target_query -- reusing the Romanian text
+    # as-is would give a Russian brief a Romanian/wrong-language title (the
+    # reported bug: RU and RO briefs both titled in the same language).
+    ru_brief = await m.create_brief(ctx, CreateBriefParams(
+        opportunity_id=opp_id, target_language="ru", target_query="рекуператор тепла",
+    ))
     assert ru_brief.status == "success"
     assert ru_brief.data.target_language == "ru"
+    assert ru_brief.data.working_title == "Рекуператор тепла"
 
     ro_brief = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ro"))
     assert ro_brief.status == "success"
     assert ro_brief.data.target_language == "ro"
     assert ro_brief.data.id != ru_brief.data.id
+    # 'ro' brief needed no target_query override -- the opportunity's own
+    # Latin-script query already matches the 'ro' target language.
+    assert ro_brief.data.working_title == "Recuperator de caldura"
 
-    dup = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ru"))
+    dup = await m.create_brief(ctx, CreateBriefParams(
+        opportunity_id=opp_id, target_language="ru", target_query="рекуператор тепла",
+    ))
     assert dup.status == "error"
 
     from schemas import ListQueueParams
     queue = await m.list_queue(ctx, ListQueueParams(site_id="climtec.md"))
     langs = sorted(item.target_language for item in queue.data.items if item.opportunity_id == opp_id)
     assert langs == ["ro", "ru"]
+
+
+@pytest.mark.asyncio
+async def test_create_brief_requires_target_query_when_script_mismatches_language():
+    """The exact reported bug: an opportunity discovered from a Russian query
+    must not silently become a Romanian brief's title too. Without a real
+    target_query for the mismatched language, create_brief must refuse
+    instead of reusing the wrong-language text."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="climtec.md", domain="climtec.md", target_languages=["ru", "ro"],
+    ))
+    await _seed_audit(ctx, "climtec.md")
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md",
+        queries=[QuerySignal(query="душно в комнате с открытым окном", impressions=10, clicks=1, ctr=0.1, avg_position=15.0)],
+    ))
+    opp_id = discovered.data.items[0].id
+
+    ru_brief = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ru"))
+    assert ru_brief.status == "success"
+    assert ru_brief.data.working_title == "Душно в комнате с открытым окном"
+
+    ro_without_query = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ro"))
+    assert ro_without_query.status == "error"
+    assert "TARGET_QUERY_REQUIRED" in ro_without_query.error
+
+    ro_brief = await m.create_brief(ctx, CreateBriefParams(
+        opportunity_id=opp_id, target_language="ro", target_query="e infundat in camera cu geamul deschis",
+    ))
+    assert ro_brief.status == "success"
+    assert ro_brief.data.working_title == "E infundat in camera cu geamul deschis"
+    assert ro_brief.data.working_title != ru_brief.data.working_title
 
 
 # ─────────── run_content_audit / get_content_audit / check_keyword_cannibalization ───────────

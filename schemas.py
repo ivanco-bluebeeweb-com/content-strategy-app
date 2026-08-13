@@ -244,6 +244,17 @@ class CreateBriefParams(BaseModel):
                         "per language for the same opportunity — a multilingual site is expected "
                         "to get a separate brief per language, not one brief reused across languages."
     )
+    target_query: str = Field(
+        "", description="The REAL query/title text for THIS brief's target_language, e.g. pulled "
+                        "from that language's own Search Console data. An Opportunity is a "
+                        "language-neutral topic and its stored primary_query is written in "
+                        "whatever language it was originally discovered in -- reusing that text "
+                        "as-is for a brief in a DIFFERENT language would give the brief a title in "
+                        "the wrong language. Required whenever the opportunity's own query text is "
+                        "written in a different script than target_language (create_brief detects "
+                        "this and errors with TARGET_QUERY_REQUIRED if target_query is missing); "
+                        "optional otherwise. Never invent this value -- pass real text or omit it."
+    )
     author_id: str = Field("", description="ContentAuthor id from list_content_authors to attribute this article to. Required when the site profile has requires_named_author=true; optional otherwise but recommended for E-E-A-T.")
 
 

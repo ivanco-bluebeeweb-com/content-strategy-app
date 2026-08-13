@@ -2739,8 +2739,17 @@ async def _create_brief_form(ctx, site_id: str, profile: dict) -> ui.UINode:
     keep the list simple and let create_brief's own one-per-language
     duplicate check do the enforcement -- this form must not invent or
     hide real state."""
+    # Sort by -created_at at the store level (the same order_by every other
+    # opportunities query in this file already uses -- see list_opportunities)
+    # and re-sort by priority score in Python instead. An unindexed/unusual
+    # order_by key at the store layer is a plausible cause of the reported
+    # 'Create new brief' hang: this keeps the query itself on the one
+    # order_by value already proven to work everywhere else in this app.
     opp_page = await ctx.store.query(
-        "opportunities", where={"site_id": site_id}, order_by="-total_priority_score", limit=100
+        "opportunities", where={"site_id": site_id}, order_by="-created_at", limit=100
+    )
+    sorted_opps = sorted(
+        opp_page.data, key=lambda d: d.data.get("total_priority_score", 0), reverse=True
     )
     opportunity_options = [
         {
@@ -2748,7 +2757,7 @@ async def _create_brief_form(ctx, site_id: str, profile: dict) -> ui.UINode:
             "label": f"{d.data.get('primary_query', '(no query)')} "
                      f"(score {d.data.get('total_priority_score', 0)}, {d.data.get('status', 'idea')})",
         }
-        for d in opp_page.data
+        for d in sorted_opps
     ]
 
     target_languages = list(profile.get("target_languages") or ["en"])

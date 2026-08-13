@@ -3626,7 +3626,7 @@
       "return_schema": {
         "$defs": {
           "CannibalizationFinding": {
-            "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page.",
+            "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page. The\nrecommendation is decided by the system itself from overlap_score\n(never left for the user to work out); the user's job is only to pick\none of the offered options via resolve_cannibalization_finding.",
             "properties": {
               "id": {
                 "anyOf": [
@@ -3673,16 +3673,9 @@
                 "title": "Description"
               },
               "status": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Status"
+                "default": "open",
+                "title": "Status",
+                "type": "string"
               },
               "url": {
                 "anyOf": [
@@ -3733,6 +3726,16 @@
               "recommendation": {
                 "default": "",
                 "title": "Recommendation",
+                "type": "string"
+              },
+              "chosen_action": {
+                "default": "",
+                "title": "Chosen Action",
+                "type": "string"
+              },
+              "resolved_at": {
+                "default": "",
+                "title": "Resolved At",
                 "type": "string"
               }
             },
@@ -3791,6 +3794,163 @@
         "x-sdl": "entity-list"
       },
       "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "resolve_cannibalization_finding",
+      "description": "Record the user's choice for ONE cannibalization finding. The system already decides and shows its own recommendation (merge/differentiate/canonicalize) from the overlap score when the finding is surfaced -- this function only records which option the user picked in response (including 'dismiss' if they judge it a false positive). Content Writer is never invoked automatically for this: an author is not required just to resolve a cannibalization decision.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "update:cannibalization_finding"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "finding_id": {
+            "description": "Cannibalization finding id from check_keyword_cannibalization",
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "action": {
+            "description": "The option the user picked in response to the system's own recommendation: merge | differentiate | canonicalize | dismiss",
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "action"
+        ],
+        "title": "ResolveCannibalizationParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page. The\nrecommendation is decided by the system itself from overlap_score\n(never left for the user to work out); the user's job is only to pick\none of the offered options via resolve_cannibalization_finding.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "default": "open",
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "shared_terms": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Shared Terms",
+            "type": "array"
+          },
+          "overlap_score": {
+            "default": 0.0,
+            "title": "Overlap Score",
+            "type": "number"
+          },
+          "urls": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Urls",
+            "type": "array"
+          },
+          "titles": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Titles",
+            "type": "array"
+          },
+          "recommendation": {
+            "default": "",
+            "title": "Recommendation",
+            "type": "string"
+          },
+          "chosen_action": {
+            "default": "",
+            "title": "Chosen Action",
+            "type": "string"
+          },
+          "resolved_at": {
+            "default": "",
+            "title": "Resolved At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "CannibalizationFinding",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "cannibalization_resolved",
       "background": false,
       "long_running": false,
       "scopes": [],
@@ -4579,6 +4739,12 @@
             "default": "",
             "description": "Language code for this brief (e.g. 'ru', 'ro'). Empty = use the site profile's first target language. Pass explicitly to create one brief per language for the same opportunity — a multilingual site is expected to get a separate brief per language, not one brief reused across languages.",
             "title": "Target Language",
+            "type": "string"
+          },
+          "target_query": {
+            "default": "",
+            "description": "The REAL query/title text for THIS brief's target_language, e.g. pulled from that language's own Search Console data. An Opportunity is a language-neutral topic and its stored primary_query is written in whatever language it was originally discovered in -- reusing that text as-is for a brief in a DIFFERENT language would give the brief a title in the wrong language. Required whenever the opportunity's own query text is written in a different script than target_language (create_brief detects this and errors with TARGET_QUERY_REQUIRED if target_query is missing); optional otherwise. Never invent this value -- pass real text or omit it.",
+            "title": "Target Query",
             "type": "string"
           },
           "author_id": {

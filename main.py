@@ -47,6 +47,7 @@ from schemas import (
     ListOutreachTargetsParams, LinkBuildingReport, GetLinkBuildingReportParams,
     ContentDecayReport, GetContentDecayParams,
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
+    ResolveCannibalizationParams,
     PurgePipelineDataParams, PurgeResult,
     ContentAuthor, ContentAuthorList, CreateContentAuthorParams, ListContentAuthorsParams,
 )
@@ -763,7 +764,9 @@ async def run_content_audit(ctx, params: RunContentAuditParams) -> ActionResult:
 
     pairs = _find_cannibalization_pairs(items)
     for pair in pairs:
-        await ctx.store.create("cannibalization_findings", {"site_id": params.site_id, **pair})
+        await ctx.store.create("cannibalization_findings", {
+            "site_id": params.site_id, "status": "open", "chosen_action": "", "resolved_at": "", **pair,
+        })
 
     needs_doing: list[str] = []
     if thin_urls:
@@ -1182,6 +1185,51 @@ async def check_keyword_cannibalization(ctx, params: CheckCannibalizationParams)
     return ActionResult.success(
         CannibalizationFindingList(items=findings, total=len(findings)),
         summary=f"{len(findings)} cannibalization finding(s) for '{params.site_id}'.",
+    )
+
+
+_CANNIBALIZATION_ACTIONS = {"merge", "differentiate", "canonicalize", "dismiss"}
+
+
+@chat.function(
+    "resolve_cannibalization_finding",
+    description=(
+        "Record the user's choice for ONE cannibalization finding. The system "
+        "already decides and shows its own recommendation (merge/differentiate/"
+        "canonicalize) from the overlap score when the finding is surfaced -- "
+        "this function only records which option the user picked in response "
+        "(including 'dismiss' if they judge it a false positive). Content Writer "
+        "is never invoked automatically for this: an author is not required just "
+        "to resolve a cannibalization decision."
+    ),
+    action_type="write",
+    effects=["update:cannibalization_finding"],
+    event="cannibalization_resolved",
+    data_model=CannibalizationFinding,
+)
+async def resolve_cannibalization_finding(ctx, params: ResolveCannibalizationParams) -> ActionResult:
+    """Mark one cannibalization_findings row resolved with the user's chosen
+    action. Any of the four offered options is valid -- the system's own
+    recommendation is only ever a suggestion in the UI, never enforced."""
+    action = params.action.strip().lower()
+    if action not in _CANNIBALIZATION_ACTIONS:
+        return ActionResult.error(
+            f"Invalid action '{params.action}'. Must be one of: {', '.join(sorted(_CANNIBALIZATION_ACTIONS))}.",
+            retryable=False,
+        )
+    doc = await ctx.store.get("cannibalization_findings", params.finding_id)
+    if not doc:
+        return ActionResult.error(f"Cannibalization finding '{params.finding_id}' not found.", retryable=False)
+
+    now = ctx.time.now().isoformat() if hasattr(ctx, "time") and hasattr(ctx.time, "now") else ""
+    status = "dismissed" if action == "dismiss" else "resolved"
+    update = {"status": status, "chosen_action": action, "resolved_at": now}
+    await ctx.store.update("cannibalization_findings", params.finding_id, update)
+    updated = await ctx.store.get("cannibalization_findings", params.finding_id)
+    return ActionResult.success(
+        CannibalizationFinding(id=updated.id, title=", ".join(updated.data.get("titles", [])[:2]), **updated.data),
+        summary=f"Cannibalization finding marked '{status}' ({action}).",
+        refresh_panels=["sources"],
     )
 
 
@@ -3001,6 +3049,49 @@ def _quick_add_block(connected_sites: list[dict], existing_site_ids: set[str],
     )
 
 
+_CANNIBALIZATION_ACTION_LABELS = {
+    "merge": "🔗 Merge into one canonical article",
+    "differentiate": "✂️ Differentiate angle/keyword focus",
+    "canonicalize": "📌 Add canonical link, keep both",
+    "dismiss": "✖️ Dismiss (false positive)",
+}
+
+
+async def _open_cannibalization_findings_block(ctx, site_id: str) -> list:
+    """Render every OPEN cannibalization finding for this site as its own
+    small card: the system's own recommendation is shown first (decided
+    from overlap_score, never left for the user to work out), then all
+    four options as direct action buttons so the user only has to pick
+    one -- no free-text, no author required for this decision."""
+    page = await ctx.store.query(
+        "cannibalization_findings", where={"site_id": site_id, "status": "open"}, limit=50,
+    )
+    if not page.data:
+        return []
+
+    blocks: list = [ui.Text(f"⚔️ {len(page.data)} open cannibalization finding(s):", variant="caption")]
+    for d in page.data:
+        f = d.data
+        rec = f.get("recommendation", "")
+        rec_key = next((k for k in _CANNIBALIZATION_ACTION_LABELS if k in rec), "differentiate")
+        titles = " vs. ".join(t for t in f.get("titles", []) if t) or "Untitled pair"
+        buttons = [
+            ui.Button(
+                label + (" · recommended" if key == rec_key else ""),
+                variant="primary" if key == rec_key else "secondary",
+                size="sm", full_width=True,
+                on_click=ui.Call("resolve_cannibalization_finding", finding_id=d.id, action=key),
+            )
+            for key, label in _CANNIBALIZATION_ACTION_LABELS.items()
+        ]
+        blocks.append(ui.Card(
+            title=titles,
+            subtitle=f"overlap {f.get('overlap_score', 0):.0%} · shared: {', '.join(f.get('shared_terms', [])[:6])}",
+            content=ui.Stack(direction="v", gap=1, children=buttons),
+        ))
+    return blocks
+
+
 @ext.panel(
     "sources",
     slot="right",
@@ -3157,6 +3248,8 @@ async def sources_panel(ctx, **kwargs) -> object:
             ],
         )
 
+        cannibalization_body = _open_cannibalization_findings_block(ctx, site_id)
+
         cards.append(
             ui.Card(
                 title=data.get("brand_name") or site_id,
@@ -3164,7 +3257,9 @@ async def sources_panel(ctx, **kwargs) -> object:
                 content=ui.Stack(
                     direction="v", gap=2,
                     children=audit_body + decay_body + visual_body
-                    + [audit_button, discover_button, cannibalization_form],
+                    + [audit_button, discover_button]
+                    + await cannibalization_body
+                    + [cannibalization_form],
                 ),
             )
         )

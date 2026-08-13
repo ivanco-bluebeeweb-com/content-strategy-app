@@ -511,17 +511,31 @@ class ExistingContentItemList(sdl.EntityList[ExistingContentItem]):
 
 class CannibalizationFinding(sdl.Entity):
     """Two or more existing articles competing for the same topic/keywords —
-    they will split ranking signal instead of reinforcing one page."""
+    they will split ranking signal instead of reinforcing one page. The
+    recommendation is decided by the system itself from overlap_score
+    (never left for the user to work out); the user's job is only to pick
+    one of the offered options via resolve_cannibalization_finding."""
     site_id: str = ""
     shared_terms: list[str] = []
     overlap_score: float = 0.0  # 0..1, share of significant terms in common
     urls: list[str] = []
     titles: list[str] = []
-    recommendation: str = ""  # merge | differentiate | canonicalize
+    recommendation: str = ""  # merge | differentiate | canonicalize -- decided by the system, offered as the default option
+    status: str = "open"  # open | resolved | dismissed
+    chosen_action: str = ""  # merge | differentiate | canonicalize | dismiss -- set by resolve_cannibalization_finding
+    resolved_at: str = ""
 
 
 class CannibalizationFindingList(sdl.EntityList[CannibalizationFinding]):
     pass
+
+
+class ResolveCannibalizationParams(BaseModel):
+    finding_id: str = Field(description="Cannibalization finding id from check_keyword_cannibalization")
+    action: str = Field(
+        description="The option the user picked in response to the system's own recommendation: "
+                     "merge | differentiate | canonicalize | dismiss"
+    )
 
 
 class ContentAuditReport(sdl.Entity):

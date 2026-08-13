@@ -1265,6 +1265,120 @@ async def test_check_keyword_cannibalization_requires_audit_for_candidate_check(
 
 
 @pytest.mark.asyncio
+async def test_resolve_cannibalization_finding_records_chosen_action():
+    """The system decides+shows its own recommendation from overlap_score;
+    the user only picks one of the offered options -- no author needed."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "A", "slug": "a", "link": "https://climtec.md/a",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "x", "lang": "ro", "categories": []},
+        {"id": 2, "title": "B", "slug": "b", "link": "https://climtec.md/b",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "y", "lang": "ro", "categories": []},
+    ]))
+    await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    found = await m.check_keyword_cannibalization(ctx, CheckCannibalizationParams(site_id="climtec.md"))
+    finding_id = found.data.items[0].id
+
+    result = await m.resolve_cannibalization_finding(
+        ctx, m.ResolveCannibalizationParams(finding_id=finding_id, action="merge"),
+    )
+    assert result.status == "success"
+    assert result.data.chosen_action == "merge"
+    assert result.data.status == "resolved"
+
+    refreshed = await m.check_keyword_cannibalization(ctx, CheckCannibalizationParams(site_id="climtec.md"))
+    resolved_row = next(f for f in refreshed.data.items if f.id == finding_id)
+    assert resolved_row.status == "resolved"
+    assert resolved_row.chosen_action == "merge"
+
+
+@pytest.mark.asyncio
+async def test_resolve_cannibalization_finding_dismiss_sets_dismissed_status():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "A", "slug": "a", "link": "https://climtec.md/a",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "x", "lang": "ro", "categories": []},
+        {"id": 2, "title": "B", "slug": "b", "link": "https://climtec.md/b",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "y", "lang": "ro", "categories": []},
+    ]))
+    await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    found = await m.check_keyword_cannibalization(ctx, CheckCannibalizationParams(site_id="climtec.md"))
+    finding_id = found.data.items[0].id
+
+    result = await m.resolve_cannibalization_finding(
+        ctx, m.ResolveCannibalizationParams(finding_id=finding_id, action="dismiss"),
+    )
+    assert result.status == "success"
+    assert result.data.status == "dismissed"
+
+
+@pytest.mark.asyncio
+async def test_resolve_cannibalization_finding_rejects_invalid_action():
+    ctx = MockContext()
+    result = await m.resolve_cannibalization_finding(
+        ctx, m.ResolveCannibalizationParams(finding_id="nope", action="rewrite everything"),
+    )
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_resolve_cannibalization_finding_missing_id_errors():
+    ctx = MockContext()
+    result = await m.resolve_cannibalization_finding(
+        ctx, m.ResolveCannibalizationParams(finding_id="does-not-exist", action="merge"),
+    )
+    assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_shows_open_cannibalization_finding_with_option_buttons():
+    """Open findings must render as direct action buttons (merge/differentiate/
+    canonicalize/dismiss) in the sources panel -- never a free-text field, and
+    never gated behind an author requirement."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "A", "slug": "a", "link": "https://climtec.md/a",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "x", "lang": "ro", "categories": []},
+        {"id": 2, "title": "B", "slug": "b", "link": "https://climtec.md/b",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "y", "lang": "ro", "categories": []},
+    ]))
+    await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "resolve_cannibalization_finding" in rendered
+    assert "recommended" in rendered
+    assert "open cannibalization finding" in rendered
+
+
+@pytest.mark.asyncio
+async def test_sources_panel_omits_resolved_cannibalization_finding():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))
+    shared_text = "sistem ventilatie comerciala birou spatiu recuperator caldura instalare pret cost"
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _mock_posts_full([
+        {"id": 1, "title": "A", "slug": "a", "link": "https://climtec.md/a",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "x", "lang": "ro", "categories": []},
+        {"id": 2, "title": "B", "slug": "b", "link": "https://climtec.md/b",
+         "content": f"<p>{shared_text} {shared_text}</p>", "excerpt": "y", "lang": "ro", "categories": []},
+    ]))
+    await m.run_content_audit(ctx, RunContentAuditParams(site_id="climtec.md"))
+    found = await m.check_keyword_cannibalization(ctx, CheckCannibalizationParams(site_id="climtec.md"))
+    finding_id = found.data.items[0].id
+    await m.resolve_cannibalization_finding(
+        ctx, m.ResolveCannibalizationParams(finding_id=finding_id, action="merge"),
+    )
+    node = await m.sources_panel(ctx)
+    rendered = repr(node)
+    assert "open cannibalization finding" not in rendered
+
+
+@pytest.mark.asyncio
 async def test_sources_panel_shows_audit_status_and_needs_doing():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md"))

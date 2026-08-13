@@ -1593,15 +1593,16 @@ async def test_brief_panel_create_brief_button_reveals_form_with_every_create_br
         queries=[QuerySignal(query="security services chisinau", clicks=10, impressions=200, ctr=0.05, avg_position=8.0)],
     ))
 
-    # Button not yet clicked: the form must not render.
+    # Button not yet clicked: the dialog must not render.
     collapsed = repr(await m.brief_panel(ctx, site_id="g4s.md"))
     assert "Create new brief" in collapsed
-    assert "'action': 'create_brief'" not in collapsed
+    assert "type='Dialog'" not in collapsed
 
-    # No author registered yet -> the form must say so instead of silently
+    # No author registered yet -> the dialog must say so instead of silently
     # letting a brief be created without one for a site requiring it.
     no_author_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", show_create_brief="1"))
-    assert "'action': 'create_brief'" in no_author_rendered
+    assert "type='Dialog'" in no_author_rendered
+    assert "'function': 'create_brief'" in no_author_rendered
     assert "'param_name': 'opportunity_id'" in no_author_rendered
     assert "'param_name': 'target_language'" in no_author_rendered
     assert "'param_name': 'target_query'" in no_author_rendered

@@ -2727,18 +2727,23 @@ def _brief_status_breakdown(rows: list[dict]) -> str:
 
 
 async def _create_brief_form(ctx, site_id: str, profile: dict) -> ui.UINode:
-    """The 'Create new brief' form revealed above the briefs list. Carries
-    every field create_brief actually accepts (see CreateBriefParams):
-    which opportunity to turn into a brief, the target language, the
-    real target_query text for that language (required whenever the
-    opportunity's own query script won't match the chosen language --
-    create_brief itself gates and errors clearly if it's needed and
-    missing), and the named author when this site requires one for
-    E-E-A-T. Only opportunities NOT already brief_ready/published for
-    every one of this site's target languages are worth offering, but we
-    keep the list simple and let create_brief's own one-per-language
-    duplicate check do the enforcement -- this form must not invent or
-    hide real state."""
+    """The 'Create new brief' ui.Dialog revealed above the briefs list.
+    Carries every field create_brief actually accepts (see
+    CreateBriefParams): which opportunity to turn into a brief, the
+    target language, the real target_query text for that language
+    (required whenever the opportunity's own query script won't match
+    the chosen language -- create_brief itself gates and errors clearly
+    if it's needed and missing), and the named author when this site
+    requires one for E-E-A-T. Only opportunities NOT already
+    brief_ready/published for every one of this site's target languages
+    are worth offering, but we keep the list simple and let
+    create_brief's own one-per-language duplicate check do the
+    enforcement -- this form must not invent or hide real state.
+
+    Uses ui.Dialog (per explicit request), the same pattern
+    _projects_section already uses for 'Add new project': field children
+    carrying param_name are merged into on_confirm's call params, so the
+    dialog needs no separate submit button of its own."""
     # Sort by -created_at at the store level (the same order_by every other
     # opportunities query in this file already uses -- see list_opportunities)
     # and re-sort by priority score in Python instead. An unindexed/unusual
@@ -2801,13 +2806,12 @@ async def _create_brief_form(ctx, site_id: str, profile: dict) -> ui.UINode:
         fields.append(ui.Select(param_name="author_id", options=author_options,
                                  placeholder="Author (optional, recommended for E-E-A-T)"))
 
-    return ui.Card(
+    return ui.Dialog(
         title="Create new brief",
-        content=ui.Form(
-            action="create_brief",
-            submit_label="Create brief",
-            children=fields,
-        ),
+        content=ui.Stack(direction="v", gap=2, children=fields),
+        confirm_label="Create brief",
+        cancel_label="Cancel",
+        on_confirm=ui.Call("create_brief"),
     )
 
 
@@ -2817,7 +2821,7 @@ async def _briefs_catalog_view(ctx, site_id: str, show_create_brief: str = "") -
     breakdown, then a searchable ui.List over the full set already
     loaded -- just scoped to article_briefs for this one site_id instead
     of media packages. Carries a 'Create new brief' CTA above the list
-    that reveals a form with every field create_brief actually accepts,
+    that reveals a ui.Dialog with every field create_brief actually accepts,
     the same show_x-param toggle pattern _projects_section uses for its
     'Add new project' dialog."""
     profile_page = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)

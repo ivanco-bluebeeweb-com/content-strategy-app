@@ -2726,12 +2726,91 @@ def _brief_status_breakdown(rows: list[dict]) -> str:
     return ", ".join(parts)
 
 
-async def _briefs_catalog_view(ctx, site_id: str) -> ui.UINode:
+async def _create_brief_form(ctx, site_id: str, profile: dict) -> ui.UINode:
+    """The 'Create new brief' form revealed above the briefs list. Carries
+    every field create_brief actually accepts (see CreateBriefParams):
+    which opportunity to turn into a brief, the target language, the
+    real target_query text for that language (required whenever the
+    opportunity's own query script won't match the chosen language --
+    create_brief itself gates and errors clearly if it's needed and
+    missing), and the named author when this site requires one for
+    E-E-A-T. Only opportunities NOT already brief_ready/published for
+    every one of this site's target languages are worth offering, but we
+    keep the list simple and let create_brief's own one-per-language
+    duplicate check do the enforcement -- this form must not invent or
+    hide real state."""
+    opp_page = await ctx.store.query(
+        "opportunities", where={"site_id": site_id}, order_by="-total_priority_score", limit=100
+    )
+    opportunity_options = [
+        {
+            "value": d.id,
+            "label": f"{d.data.get('primary_query', '(no query)')} "
+                     f"(score {d.data.get('total_priority_score', 0)}, {d.data.get('status', 'idea')})",
+        }
+        for d in opp_page.data
+    ]
+
+    target_languages = list(profile.get("target_languages") or ["en"])
+    language_options = [{"value": lang, "label": lang} for lang in target_languages]
+
+    requires_named_author = bool(profile.get("requires_named_author"))
+    author_page = await ctx.store.query("content_authors", where={"site_id": site_id}, limit=100)
+    author_options = [{"value": d.id, "label": d.data.get("name", "(unnamed)")} for d in author_page.data]
+
+    fields: list[ui.UINode] = []
+    if not opportunity_options:
+        fields.append(ui.Alert(
+            title="No opportunities yet",
+            message="Discover opportunities for this project first (Discover from Search Console), "
+                    "then come back here to turn one into a brief.",
+            type="warning",
+        ))
+    else:
+        fields.append(ui.Select(param_name="opportunity_id", options=opportunity_options,
+                                 placeholder="Opportunity to turn into a brief"))
+    if language_options:
+        fields.append(ui.Select(param_name="target_language", options=language_options,
+                                 placeholder="Target language"))
+    fields.append(ui.Input(
+        param_name="target_query",
+        placeholder="Real query/title text in the target language "
+                    "(required if it differs in script from the opportunity's own query)",
+    ))
+    if requires_named_author:
+        if author_options:
+            fields.append(ui.Select(param_name="author_id", options=author_options,
+                                     placeholder="Author (required — this site requires a named author)"))
+        else:
+            fields.append(ui.Alert(
+                title="No content author registered",
+                message="This site requires a named author for E-E-A-T. Register one with "
+                        "create_content_author before creating a brief.",
+                type="warning",
+            ))
+    else:
+        fields.append(ui.Select(param_name="author_id", options=author_options,
+                                 placeholder="Author (optional, recommended for E-E-A-T)"))
+
+    return ui.Card(
+        title="Create new brief",
+        content=ui.Form(
+            action="create_brief",
+            submit_label="Create brief",
+            children=fields,
+        ),
+    )
+
+
+async def _briefs_catalog_view(ctx, site_id: str, show_create_brief: str = "") -> ui.UINode:
     """Central catalogue of one project's briefs. Visually mirrors Media
     Hub's _packages_view: a header carrying a live count + status
     breakdown, then a searchable ui.List over the full set already
     loaded -- just scoped to article_briefs for this one site_id instead
-    of media packages."""
+    of media packages. Carries a 'Create new brief' CTA above the list
+    that reveals a form with every field create_brief actually accepts,
+    the same show_x-param toggle pattern _projects_section uses for its
+    'Add new project' dialog."""
     profile_page = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)
     profile = profile_page.data[0].data if profile_page.data else {}
     project_label = profile.get("brand_name") or site_id
@@ -2750,10 +2829,19 @@ async def _briefs_catalog_view(ctx, site_id: str) -> ui.UINode:
         d.data.get("brief_id"): d.id for d in q_page.data if d.data.get("brief_id")
     }
 
+    create_brief_button = ui.Button(
+        "➕ Create new brief", variant="primary", size="md",
+        on_click=ui.Call("__panel__brief", site_id=site_id, show_create_brief="" if show_create_brief else "1"),
+    )
+
     children: list[ui.UINode] = [
         ui.Header(text=f"{project_label} · Briefs ({total})", level=2,
                    subtitle=_brief_status_breakdown(rows)),
+        create_brief_button,
     ]
+
+    if show_create_brief:
+        children.append(await _create_brief_form(ctx, site_id, profile))
 
     if not rows:
         children.append(ui.Empty(message="No briefs yet for this project.", icon="📝"))
@@ -2784,10 +2872,10 @@ async def _briefs_catalog_view(ctx, site_id: str) -> ui.UINode:
     icon="📝",
     center_overlay=True,
 )
-async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", **kwargs) -> object:
+async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", show_create_brief: str = "", **kwargs) -> object:
     if not queue_item_id:
         if site_id:
-            return await _briefs_catalog_view(ctx, site_id)
+            return await _briefs_catalog_view(ctx, site_id, show_create_brief)
         return ui.Empty(message="Select a project to see its briefs.", icon="📝")
 
     q_doc = await ctx.store.get("queue_items", queue_item_id)

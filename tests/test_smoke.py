@@ -1573,6 +1573,44 @@ async def test_brief_panel_shows_project_briefs_catalog_when_site_id_given_witho
     rendered = repr(await m.brief_panel(ctx, site_id="g4s.md"))
     assert "G4S Moldova" in rendered
     assert "Briefs (1)" in rendered
+    assert "Create new brief" in rendered
+
+
+@pytest.mark.asyncio
+async def test_brief_panel_create_brief_button_reveals_form_with_every_create_brief_field():
+    """The 'Create new brief' CTA above the briefs list must reveal a form
+    carrying every field create_brief actually accepts: which opportunity,
+    target language, the real target_query text for that language, and
+    an author picker (required when the site needs a named author)."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
+        target_languages=["en", "ro"], requires_named_author=True,
+    ))
+    await _seed_audit(ctx, "g4s.md")
+    await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services chisinau", clicks=10, impressions=200, ctr=0.05, avg_position=8.0)],
+    ))
+
+    # Button not yet clicked: the form must not render.
+    collapsed = repr(await m.brief_panel(ctx, site_id="g4s.md"))
+    assert "Create new brief" in collapsed
+    assert "'action': 'create_brief'" not in collapsed
+
+    # No author registered yet -> the form must say so instead of silently
+    # letting a brief be created without one for a site requiring it.
+    no_author_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", show_create_brief="1"))
+    assert "'action': 'create_brief'" in no_author_rendered
+    assert "'param_name': 'opportunity_id'" in no_author_rendered
+    assert "'param_name': 'target_language'" in no_author_rendered
+    assert "'param_name': 'target_query'" in no_author_rendered
+    assert "No content author registered" in no_author_rendered
+
+    await m.create_content_author(ctx, CreateContentAuthorParams(site_id="g4s.md", name="Ion Popescu"))
+    with_author_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", show_create_brief="1"))
+    assert "'param_name': 'author_id'" in with_author_rendered
+    assert "Ion Popescu" in with_author_rendered
 
 
 @pytest.mark.asyncio

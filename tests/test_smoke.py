@@ -42,6 +42,14 @@ async def _configure_required_link_inputs(ctx, *, site_id="g4s.md", language="en
     """A valid test site has factual action pages and verified sources.
 
     Tests must configure both, because production refuses to invent either URL.
+
+    Also registers default mocks for create_brief's two mandatory pipeline
+    gates -- Brand Strategy Hub's check_brand_readiness and WordPress Hub's
+    list_post_categories_full -- so existing happy-path tests keep exercising
+    a *ready* brand and a *real* (if empty) category tree by default. Tests
+    that specifically want to exercise BRAND_PROFILE_REQUIRED/incomplete
+    positioning/category-resolution behaviour re-register these after
+    calling this helper.
     """
     profiles = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)
     languages = list(profiles.data[0].data.get("target_languages") or [language]) if profiles.data else [language]
@@ -53,6 +61,19 @@ async def _configure_required_link_inputs(ctx, *, site_id="g4s.md", language="en
         await ctx.store.update("site_profiles", profiles.data[0].id, {
             "external_sources_i18n": {lang: [f"https://sources.example/{lang}"] for lang in languages},
         })
+
+    async def _default_brand_readiness(**kwargs):
+        return {
+            "brand_exists": True, "brand_id": f"test-brand-{site_id}", "brand_name": site_id,
+            "positioning_complete": True, "missing_positioning_fields": [], "content_topics": [],
+            "has_target_segments": True, "target_segment_count": 1,
+            "has_current_swot": True, "ready": True, "reasons": [],
+        }
+    ctx.extensions.register("brand-strategy-hub", "check_brand_readiness", _default_brand_readiness)
+
+    async def _default_categories(**kwargs):
+        return []
+    ctx.extensions.register("wordpress-hub", "list_post_categories_full", _default_categories)
 
 
 @pytest.mark.asyncio
@@ -1723,6 +1744,154 @@ async def test_create_brief_rejects_author_from_a_different_site():
     ))
     assert result.status == "error"
     assert "not found for site" in result.error
+
+
+@pytest.mark.asyncio
+async def test_create_brief_blocks_when_no_brand_profile_exists():
+    """Mandatory gate: create_brief must never draft blind. When Brand
+    Strategy Hub has no brand profile at all for the site, the brief is
+    refused with a specific, actionable code -- not silently created."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    await _configure_required_link_inputs(ctx, site_id="g4s.md")
+
+    async def _no_brand(**kwargs):
+        return {"brand_exists": False, "ready": False, "reasons": ["no brand profile"]}
+    ctx.extensions.register("brand-strategy-hub", "check_brand_readiness", _no_brand)
+
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "error"
+    assert "BRAND_PROFILE_REQUIRED" in result.error
+
+
+@pytest.mark.asyncio
+async def test_create_brief_blocks_when_brand_positioning_incomplete():
+    """A brand profile existing is not enough -- create_brief must also
+    refuse to draft when the profile's real positioning (mission/USPs/tone)
+    is incomplete, naming exactly which fields are missing."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    await _configure_required_link_inputs(ctx, site_id="g4s.md")
+
+    async def _incomplete_brand(**kwargs):
+        return {
+            "brand_exists": True, "brand_id": "b1", "positioning_complete": False,
+            "missing_positioning_fields": ["mission", "unique_selling_points"],
+            "ready": False, "reasons": ["positioning incomplete"],
+        }
+    ctx.extensions.register("brand-strategy-hub", "check_brand_readiness", _incomplete_brand)
+
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "error"
+    assert "BRAND_POSITIONING_INCOMPLETE" in result.error
+    assert "mission" in result.error
+
+
+@pytest.mark.asyncio
+async def test_create_brief_blocks_when_brand_readiness_check_unreachable():
+    """A downstream IPC failure while checking Brand Strategy Hub must not be
+    silently treated as 'brand is fine' -- it blocks with a retryable error
+    instead of letting the brief through unchecked."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    await _configure_required_link_inputs(ctx, site_id="g4s.md")
+    ctx.extensions._handlers.get("brand-strategy-hub", {}).pop("check_brand_readiness", None)
+
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services", impressions=10, clicks=1, ctr=0.1, avg_position=10)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "error"
+    assert "BRAND_READINESS_CHECK_FAILED" in result.error
+    assert result.retryable is True
+
+
+@pytest.mark.asyncio
+async def test_create_brief_resolves_existing_category_by_real_topic_overlap():
+    """Automated category resolution: create_brief must always call the
+    resolver against the site's REAL WordPress category tree and pick an
+    existing category when the topic terms genuinely overlap it -- never a
+    generic default."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    await _configure_required_link_inputs(ctx, site_id="g4s.md")
+
+    async def _categories(**kwargs):
+        return [
+            {"id": 12, "name": "Security Services", "slug": "security-services", "parent_id": 0, "count": 4},
+            {"id": 34, "name": "Blog", "slug": "blog", "parent_id": 0, "count": 0},
+        ]
+    ctx.extensions.register("wordpress-hub", "list_post_categories_full", _categories)
+
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services chisinau", impressions=500, clicks=10, ctr=0.02, avg_position=8.5)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "success"
+    assert result.data.resolved_category == "Security Services"
+    assert result.data.resolved_category_id == 12
+    assert result.data.category_resolution_reason
+
+
+@pytest.mark.asyncio
+async def test_create_brief_proposes_new_category_when_no_existing_one_overlaps():
+    """When no existing category's terms genuinely overlap the topic, the
+    resolver must propose a new, topic-derived name (category_id 0) instead
+    of forcing the article into an unrelated existing category."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    await _configure_required_link_inputs(ctx, site_id="g4s.md")
+
+    async def _categories(**kwargs):
+        return [{"id": 34, "name": "Recipes", "slug": "recipes", "parent_id": 0, "count": 9}]
+    ctx.extensions.register("wordpress-hub", "list_post_categories_full", _categories)
+
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services chisinau", impressions=500, clicks=10, ctr=0.02, avg_position=8.5)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "success"
+    assert result.data.resolved_category_id == 0
+    assert result.data.resolved_category not in ("", "Blog", "Uncategorized", "Recipes")
+
+
+@pytest.mark.asyncio
+async def test_create_brief_survives_category_lookup_failure_with_honest_reason():
+    """A WordPress IPC failure while resolving the category must not fabricate
+    a category name -- it leaves resolved_category empty and records an
+    honest, specific reason instead, while still letting the brief through
+    (unlike the brand gate, a category can be fixed before publish)."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    await _configure_required_link_inputs(ctx, site_id="g4s.md")
+    ctx.extensions._handlers.get("wordpress-hub", {}).pop("list_post_categories_full", None)
+
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services chisinau", impressions=500, clicks=10, ctr=0.02, avg_position=8.5)],
+    ))
+    result = await m.create_brief(ctx, CreateBriefParams(opportunity_id=discovered.data.items[0].id))
+    assert result.status == "success"
+    assert result.data.resolved_category == ""
+    assert result.data.resolved_category_id == 0
+    assert "Could not read" in result.data.category_resolution_reason
 
 
 @pytest.mark.asyncio

@@ -121,6 +121,11 @@ class ArticleBrief(sdl.Entity, sdl.Bodied):
     author_name: str = ""
     author_bio: str = ""
     author_credentials: list[str] = []
+    resolved_category: str = ""  # WordPress category name this brief is resolved to -- either an existing category chosen by real overlap, or a new name to create; never a generic default
+    resolved_category_id: int = 0  # WordPress term id when matched to an EXISTING category; 0 when resolved_category is a brand-new name to be created at publish time
+    category_resolution_reason: str = ""  # why this category was chosen -- auditable, not a silent guess
+    brand_readiness_checked: bool = False  # True once create_brief has run the mandatory Brand Strategy Hub readiness gate for this brief's site
+    brand_id: str = ""  # Brand Strategy Hub brand_id resolved during the readiness gate, if any
     status: str = "brief_ready"
 
 
@@ -417,6 +422,8 @@ class WriterBrief(sdl.Entity, sdl.Bodied):
     author_name: str = ""
     author_bio: str = ""
     author_credentials: list[str] = []
+    resolved_category: str = ""  # -> wordpress-hub create_post(category=...) -- always resolved by create_brief, never a generic default
+    category_resolution_reason: str = ""
     approved_visual_guidance: dict[str, object] = {}
 
 

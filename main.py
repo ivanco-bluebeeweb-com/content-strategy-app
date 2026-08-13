@@ -68,6 +68,7 @@ from converters import (
     top_terms as _top_terms,
     term_overlap_score as _term_overlap_score,
     find_cannibalization_pairs as _find_cannibalization_pairs,
+    resolve_category as _resolve_category,
 )
 import time as _time
 
@@ -1593,6 +1594,47 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             retryable=False,
         )
 
+    # MANDATORY GATE: whenever a user asks for an article, drafting must be
+    # grounded in the REAL state of Brand Strategy Hub's data for this site
+    # -- not guessed off a bare site profile. create_brief always calls
+    # Brand Strategy Hub's check_brand_readiness IPC surface before it is
+    # allowed to build a brief; a missing/incomplete brand blocks the brief
+    # the same way run_content_audit's own mandatory gate blocks
+    # discover_opportunities. A downstream IPC failure is surfaced as a
+    # retryable error rather than silently treated as "brand is fine".
+    site_id = opp.get("site_id", "")
+    try:
+        readiness = await ctx.extensions.call(
+            "brand-strategy-hub", "check_brand_readiness", site_id=site_id,
+        )
+    except Exception as exc:  # noqa: BLE001 -- a dependency failure must not silently bypass this gate
+        return ActionResult.error(
+            f"BRAND_READINESS_CHECK_FAILED: could not verify Brand Strategy Hub data for "
+            f"'{site_id}' ({type(exc).__name__}: {exc}). This brief cannot be created blind "
+            f"-- retry once Brand Strategy Hub is reachable.",
+            retryable=True,
+            code="BRAND_READINESS_CHECK_FAILED",
+        )
+    readiness = readiness or {}
+    if not readiness.get("brand_exists"):
+        return ActionResult.error(
+            f"BRAND_PROFILE_REQUIRED: no Brand Strategy Hub brand profile exists for '{site_id}'. "
+            f"Create one there (create_brand_profile) with real mission/value_proposition/tone_of_voice "
+            f"before drafting content for this site -- an article without a real brand behind it is a guess.",
+            retryable=False,
+            code="BRAND_PROFILE_REQUIRED",
+        )
+    if not readiness.get("positioning_complete"):
+        missing = ", ".join(readiness.get("missing_positioning_fields", []) or ["positioning fields"])
+        return ActionResult.error(
+            f"BRAND_POSITIONING_INCOMPLETE: the brand profile for '{site_id}' is missing: {missing}. "
+            f"Fill these in via Brand Strategy Hub's update_brand_profile before drafting -- this brief "
+            f"would otherwise be written without knowing what the brand actually stands for.",
+            retryable=False,
+            code="BRAND_POSITIONING_INCOMPLETE",
+        )
+    brand_readiness_warnings: list[str] = list(readiness.get("reasons", []) or [])
+
     target_language = params.target_language or (profile.get("target_languages") or ["en"])[0]
     lang_key = target_language.lower()[:2]
     site_languages = list(profile.get("target_languages") or [lang_key])
@@ -1793,6 +1835,31 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
         scored.sort(key=lambda pair: pair[0], reverse=True)
         internal_link_targets = [link for _, link in scored[:3] if link]
 
+    # MANDATORY AUTOMATED CATEGORY RESOLUTION: every brief must go through
+    # this step -- never a hardcoded/generic default (e.g. the previous
+    # 'Blog' guess that turned out to be an empty, unrelated category on a
+    # real site). Reads the site's REAL WordPress category tree via IPC and
+    # scores it against this brief's own topic-term signature. An IPC
+    # failure is non-fatal here (unlike the brand gate above) because a
+    # brief without WordPress reachable can still be reviewed/edited before
+    # publish -- it just carries an honest "could not resolve" reason
+    # instead of a fabricated category name.
+    try:
+        wp_categories = await ctx.extensions.call(
+            "wordpress-hub", "list_post_categories_full", site_id=wp_site_id, lang=lang_key,
+        )
+    except Exception as exc:  # noqa: BLE001 -- degrade to an honest unresolved state, never fabricate a category
+        wp_categories = None
+        category_resolution_reason = (
+            f"Could not read WordPress's real category tree ({type(exc).__name__}: {exc}) -- "
+            f"category left unresolved; resolve manually before publishing."
+        )
+        resolved_category, resolved_category_id = "", 0
+    if wp_categories is not None:
+        resolved_category, resolved_category_id, category_resolution_reason = _resolve_category(
+            opp_terms or [brief_title_source], wp_categories or []
+        )
+
     text_policy, image_text = _decide_image_text_policy(
         opp.get("intent", "informational"),
         profile.get("approved_visual_guidance", {}).get("prohibited_patterns", []),
@@ -1831,6 +1898,11 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
             "text_policy": text_policy,
             "image_text": image_text,
             "approved_visual_guidance": profile.get("approved_visual_guidance", {}),
+            "resolved_category": resolved_category,
+            "resolved_category_id": resolved_category_id,
+            "category_resolution_reason": category_resolution_reason,
+            "brand_readiness_checked": True,
+            "brand_id": readiness.get("brand_id", ""),
             "status": "brief_ready",
         },
     )

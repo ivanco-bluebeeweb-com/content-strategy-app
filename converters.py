@@ -172,6 +172,11 @@ def to_brief(d) -> ArticleBrief:
         author_name=data.get("author_name", ""),
         author_bio=data.get("author_bio", ""),
         author_credentials=data.get("author_credentials", []),
+        resolved_category=data.get("resolved_category", ""),
+        resolved_category_id=data.get("resolved_category_id", 0),
+        category_resolution_reason=data.get("category_resolution_reason", ""),
+        brand_readiness_checked=data.get("brand_readiness_checked", False),
+        brand_id=data.get("brand_id", ""),
         status=data.get("status", "brief_ready"),
     )
 
@@ -334,6 +339,69 @@ def term_overlap_score(terms_a: list[str], terms_b: list[str]) -> float:
     inter = a & b
     union = a | b
     return round(len(inter) / len(union), 3) if union else 0.0
+
+
+def resolve_category(topic_terms: list[str], categories: list[dict]) -> tuple[str, int, str]:
+    """Deterministically resolve a WordPress category for a new article from
+    the site's REAL existing category tree -- never a hardcoded/generic
+    default like "Blog". Used by create_brief's mandatory category-resolution
+    step (every article brief must call this, never skip straight to a
+    default name).
+
+    ``categories`` is WordPress Hub's list_post_categories_full IPC payload:
+    [{"id", "name", "slug", "parent_id", "count"}, ...]. ``topic_terms`` is
+    the brief's own top_terms signature (primary_query + supporting_queries).
+
+    Scoring: token-overlap between the topic's terms and each category's own
+    name/slug tokens (same technique as term_overlap_score elsewhere in this
+    module). A category with zero posts (count=0) is still eligible but
+    scored slightly lower than an equally-matching populated one, since an
+    empty category is more likely orphaned/never-really-used taxonomy (the
+    exact 'Blog' category bug this replaces).
+
+    Returns (category_name, category_id, reason):
+      - category_id > 0 -> an existing real category matched with a real
+        content overlap; category_name is its exact existing name.
+      - category_id == 0 -> no existing category scored above zero overlap;
+        category_name is a new name derived from the topic itself (never
+        "Blog"/"Uncategorized"/empty), for the caller to create.
+    """
+    topic_set = set(t.lower() for t in topic_terms if t)
+    if not categories:
+        fallback = " ".join(topic_terms[:2]).title() or "General"
+        return fallback, 0, "No categories exist yet on this site -- proposing a new one from the article's own topic terms."
+
+    best = None  # (tiebreak, overlap, category_dict)
+    for cat in categories:
+        name = str(cat.get("name", ""))
+        slug = str(cat.get("slug", ""))
+        cat_tokens = set(re.findall(r"[a-zA-Za-\u044f\u0410-\u042f\u0451\u0401]+", (name + " " + slug).lower()))
+        cat_tokens = {t for t in cat_tokens if t not in _STOPWORDS and len(t) > 2}
+        if not cat_tokens or not topic_set:
+            overlap = 0.0
+        else:
+            inter = topic_set & cat_tokens
+            union = topic_set | cat_tokens
+            overlap = len(inter) / len(union) if union else 0.0
+        tiebreak = overlap + (0.001 if int(cat.get("count", 0) or 0) > 0 else 0.0)
+        if best is None or tiebreak > best[0]:
+            best = (tiebreak, overlap, cat)
+
+    if best and best[1] > 0.0:
+        _, overlap, cat = best
+        return (
+            str(cat.get("name", "")),
+            int(cat.get("id", 0) or 0),
+            f"Matched existing category '{cat.get('name', '')}' by real topic-term overlap ({overlap:.2f}); "
+            f"chosen from the site's own category tree, not a default.",
+        )
+
+    fallback = " ".join(topic_terms[:2]).title() or "General"
+    return (
+        fallback, 0,
+        f"No existing category overlapped this topic's terms ({len(categories)} categories checked) -- "
+        f"proposing a new category '{fallback}' derived from the article's own topic, not a generic default.",
+    )
 
 
 def find_cannibalization_pairs(items: list[dict], min_overlap: float = 0.35) -> list[dict]:

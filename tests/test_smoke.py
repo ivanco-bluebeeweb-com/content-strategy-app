@@ -1419,7 +1419,14 @@ async def test_brief_panel_detail_view_has_back_to_briefs_button():
     """The brief detail screen (queue_item_id given) must carry a gray,
     medium, left-arrow-icon 'back' button naming its real destination --
     per the platform UX rule -- that routes back to this project's briefs
-    catalog (brief_panel(site_id=...)), not a bare unlabeled 'Back'."""
+    catalog (brief_panel(site_id=...)), not a bare unlabeled 'Back'.
+
+    Panel navigation merges call params with whatever is already open
+    rather than replacing them, so the button must explicitly clear
+    queue_item_id -- otherwise clicking it would still render this same
+    detail view (the currently-open queue_item_id survives the call) and
+    the button would not actually navigate anywhere, which is exactly the
+    reported bug."""
     ctx = MockContext()
     queue_item_id, _brief_id = await _site_with_brief_ready_queue_item(ctx)
     rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
@@ -1427,6 +1434,13 @@ async def test_brief_panel_detail_view_has_back_to_briefs_button():
     assert "'variant': 'secondary'" in rendered
     assert "'icon': 'ArrowLeft'" in rendered
     assert "'site_id': 'g4s.md'" in rendered
+    assert "'queue_item_id': ''" in rendered
+
+    # Simulate the actual click: __panel__brief re-invoked with the button's
+    # own params (site_id set, queue_item_id explicitly cleared) must now
+    # render the briefs catalog, not the same detail view again.
+    back_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", queue_item_id=""))
+    assert "Briefs (1)" in back_rendered
 
 
 @pytest.mark.asyncio

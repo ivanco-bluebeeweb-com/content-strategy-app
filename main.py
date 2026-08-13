@@ -2765,9 +2765,15 @@ async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", **kwargs)
     # Back button to the briefs list this detail page was opened from --
     # gray, medium, left-pointing arrow icon on the left of the label, with
     # the label naming the actual destination rather than a bare "Back".
+    # Panel navigation merges params with whatever is already open rather
+    # than replacing them wholesale (see page-speed-insights' own
+    # ui.Call("__panel__psi", view="") for the same pattern) -- so the
+    # currently-open queue_item_id must be explicitly cleared here, or the
+    # panel keeps rendering this same detail view instead of routing back
+    # to the briefs catalog.
     back_button = ui.Button(
         "Back to Briefs", variant="secondary", size="md", icon="ArrowLeft",
-        on_click=ui.Call("__panel__brief", site_id=q.get("site_id", "")),
+        on_click=ui.Call("__panel__brief", site_id=q.get("site_id", ""), queue_item_id=""),
     )
 
     header = ui.Header(title, level=2, subtitle=f"{q.get('site_id', '')} · {_STATUS_LABEL.get(status, status)}")

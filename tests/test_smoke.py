@@ -110,31 +110,13 @@ async def test_update_and_list_site_profile_return_approved_visual_guidance_in_a
     assert profile.approved_visual_guidance.get("vbs_revision") == guidance["vbs_revision"]
 
 
-@pytest.mark.asyncio
-async def test_queue_panel_labels_current_and_stale_approved_visual_baselines():
-    from schemas import UpdateSiteProfileParams
-    ctx = MockContext()
-    queue_item_id, brief_id = await _site_with_brief_ready_queue_item(ctx)
-    guidance = _approved_visual_guidance()
-    await m.update_site_profile(
-        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=guidance)
-    )
-    brief_doc = await ctx.store.get("article_briefs", brief_id)
-    await ctx.store.update("article_briefs", brief_doc.id, {"approved_visual_guidance": guidance})
-
-    current_rendered = repr(await m.queue_panel(ctx))
-    assert "Visual baseline: current" in current_rendered
-
-    updated_guidance = _approved_visual_guidance()
-    updated_guidance["profile_revision"] = 3
-    updated_guidance["snapshot_hash"] = "sha256:new-approved-basis"
-    await m.update_site_profile(
-        ctx, UpdateSiteProfileParams(site_id="g4s.md", approved_visual_guidance=updated_guidance)
-    )
-
-    stale_rendered = repr(await m.queue_panel(ctx))
-    assert "Visual baseline: stale" in stale_rendered
-    assert queue_item_id in stale_rendered
+# NOTE: test_queue_panel_labels_current_and_stale_approved_visual_baselines was
+# removed here -- it asserted "Visual baseline: current/stale" text inside the
+# left-sidebar queue-item list, which was intentionally deleted from
+# queue_panel (per explicit request: no queue/briefs listing + no "Filter by
+# site" Select in the sidebar, full stop). The visual-baseline current/stale
+# computation itself is untouched and still covered directly by the
+# get_content_calendar tests (visual_baseline_state assertions below).
 
 
 @pytest.mark.asyncio

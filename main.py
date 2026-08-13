@@ -2478,14 +2478,6 @@ _STATUS_LABEL = {
 }
 
 
-async def _fetch_queue(ctx, site_id: str = "") -> list:
-    page = await ctx.store.query("queue_items", order_by="-created_at", limit=500)
-    items = list(page.data)
-    if site_id:
-        items = [d for d in items if d.data.get("site_id") == site_id]
-    return items
-
-
 async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINode:
     """'Projects' = the site profiles already registered (our connected
     sites). Shown as a clickable list at the top of the sidebar so a
@@ -2566,22 +2558,16 @@ async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINo
     max_width=460,
 )
 async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwargs) -> object:
+    """Left sidebar: Projects section + a button into the Sites panel.
+
+    No queue/briefs listing here on purpose (removed per explicit request) --
+    a project's own briefs are already one click away via _briefs_catalog_view
+    (clicking a project routes to brief_panel(site_id=...)), so a second,
+    duplicate, searchable list of the same items in the sidebar was pure
+    clutter. Same goes for the 'Filter by site' Select it depended on --
+    with no queue list left to filter, the control had no purpose either.
+    """
     projects_card = await _projects_section(ctx, site_id, show_add_project)
-    docs = await _fetch_queue(ctx, site_id)
-
-    site_page = await ctx.store.query("site_profiles", limit=50)
-    site_options = [{"value": "", "label": "All sites"}] + [
-        {"value": d.data.get("site_id", d.id), "label": d.data.get("brand_name") or d.data.get("site_id", d.id)}
-        for d in site_page.data
-    ]
-
-    filter_row = ui.Select(
-        options=site_options,
-        value=site_id,
-        placeholder="Filter by site",
-        param_name="site_id",
-        on_change=ui.Call("__panel__queue"),
-    )
 
     # Explicit button to open the Sites panel (right slot). The right slot's
     # own auto-population at session init is not guaranteed the way the left
@@ -2593,64 +2579,15 @@ async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwar
         on_click=ui.Call("__panel__sources"),
     )
 
-    if not docs:
-        body = ui.Stack(
-            direction="v",
-            gap=3,
-            children=[
-                projects_card,
-                ui.Divider(),
-                sites_button,
-                filter_row,
-                ui.Empty(
-                    message="No queue items yet — discover opportunities from chat to get started.",
-                    icon="📋",
-                ),
-            ],
-        )
-        return body
-
-    profile_page = await ctx.store.query("site_profiles", limit=500)
-    profiles_by_site_id = {doc.data.get("site_id", ""): doc.data for doc in profile_page.data}
-
-    items = []
-    for d in docs:
-        data = d.data
-        status = data.get("lifecycle_status", "idea")
-        subtitle = data.get("site_id", "")
-        if data.get("brief_id"):
-            brief_doc = await ctx.store.get("article_briefs", data["brief_id"])
-            if brief_doc and brief_doc.data.get("approved_visual_guidance"):
-                brief_guidance = brief_doc.data["approved_visual_guidance"]
-                current_guidance = profiles_by_site_id.get(data.get("site_id", ""), {}).get("approved_visual_guidance", {})
-                baseline_state = (
-                    "current" if _approved_visual_baseline_is_current(brief_guidance, current_guidance) else "stale"
-                )
-                subtitle = f"{subtitle} · Visual baseline: {baseline_state}"
-        if status in ("draft_ready", "approved") and not data.get("fact_checked"):
-            subtitle = f"{subtitle} · ⚠️ fact-check needed before publish"
-        items.append(
-            ui.ListItem(
-                id=d.id,
-                title=data.get("primary_query") or data.get("working_title") or d.id,
-                subtitle=subtitle,
-                badge=ui.Badge(_STATUS_LABEL.get(status, status), color=_STATUS_COLOR.get(status, "gray")),
-                on_click=ui.Call("__panel__brief", queue_item_id=d.id),
-            )
-        )
-
-    root = ui.Stack(
+    return ui.Stack(
         direction="v",
         gap=3,
         children=[
             projects_card,
             ui.Divider(),
             sites_button,
-            filter_row,
-            ui.List(items=items, searchable=True),
         ],
     )
-    return root
 
 
 def _outline_markdown(outline: list) -> str:

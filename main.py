@@ -25,6 +25,7 @@ from schemas import (
     BuildContentCalendarParams, BuildMediaBriefHandoffParams, BuildWriterBriefParams, CreateBriefParams,
     RefreshBriefVisualGuidanceParams,
     CreateSiteProfileParams, DiscoverOpportunitiesParams,
+    DiscoverOpportunitiesFromSearchConsoleParams, QuerySignal,
     GetContentCalendarParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams, UpdateSiteProfileParams,
@@ -71,7 +72,7 @@ import time as _time
 
 ext = Extension(
     "content-strategy-app",
-    version="0.1.0",
+    version="0.7.0",
     display_name="Content Strategy Hub",
     description=(
         "Plans what to write next for your sites. Discovers content opportunities "
@@ -1324,6 +1325,105 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
     )
 
 
+def _normalize_gsc_host(site_url: str) -> str:
+    """'sc-domain:climtec.md' or 'https://climtec.md/' -> 'climtec.md'."""
+    s = (site_url or "").strip().lower()
+    if s.startswith("sc-domain:"):
+        host = s.split(":", 1)[1]
+    else:
+        host = s.split("://", 1)[-1].split("/", 1)[0]
+    return host[4:] if host.startswith("www.") else host
+
+
+async def _resolve_gsc_site_url(ctx, domain: str) -> str:
+    """Find this domain's own verified Search Console property (sc-domain:
+    or URL-prefix form) via IPC, falling back to the sc-domain: guess so a
+    transient connector error degrades gracefully instead of hard-failing."""
+    target = domain.strip().lower()
+    if target.startswith("www."):
+        target = target[4:]
+    try:
+        sites = await ctx.extensions.call("google-search-console-connector", "list_sites")
+        rows = (sites or {}).get("sites", []) if isinstance(sites, dict) else (sites or [])
+    except Exception:
+        rows = []
+    matches = [r for r in rows or [] if _normalize_gsc_host(r.get("site_url", "")) == target]
+    # Prefer the sc-domain: property (covers every scheme/subdomain) over a
+    # single URL-prefix property when both are verified for the same host.
+    for r in matches:
+        if (r.get("site_url") or "").startswith("sc-domain:"):
+            return r["site_url"]
+    if matches:
+        return matches[0]["site_url"]
+    return f"sc-domain:{target}"
+
+
+@chat.function(
+    "discover_opportunities_from_search_console",
+    description=(
+        "Panel convenience wrapper for discover_opportunities: fetches this site's "
+        "own Search Console top_queries via inter-extension IPC (no manual JSON "
+        "copy-paste needed) and feeds them straight into the same scoring, "
+        "clustering, and content-audit gate as discover_opportunities. Use this "
+        "from a button; use discover_opportunities directly when you already have "
+        "query signals in hand (e.g. from striking_distance or SEO Audit Engine)."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:opportunity", "create:queue_item"],
+    event="opportunities_discovered",
+    data_model=OpportunityList,
+)
+async def discover_opportunities_from_search_console(
+    ctx, params: DiscoverOpportunitiesFromSearchConsoleParams,
+) -> ActionResult:
+    """Resolve the site's GSC property, pull top_queries, map to QuerySignal,
+    and delegate to discover_opportunities for the actual scoring/gate logic."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"Site profile '{params.site_id}' not found. Create it first with create_site_profile.",
+            retryable=False,
+        )
+    domain = profile_page.data[0].data.get("domain", params.site_id)
+
+    site_url = await _resolve_gsc_site_url(ctx, domain)
+    try:
+        gsc_result = await ctx.extensions.call(
+            "google-search-console-connector", "top_queries",
+            site_url=site_url, limit=params.limit,
+        )
+    except Exception as exc:  # noqa: BLE001 -- surface the real IPC failure, don't silently return zero signals
+        return ActionResult.error(
+            f"Could not fetch Search Console queries for '{domain}' ({site_url}): "
+            f"{type(exc).__name__}: {exc}. Connect/verify this property in the Google "
+            f"Search Console connector first.",
+            retryable=True,
+        )
+    rows = (gsc_result or {}).get("rows", []) if isinstance(gsc_result, dict) else (gsc_result or [])
+    if not rows:
+        return ActionResult.error(
+            f"Search Console returned no query rows for '{domain}' ({site_url}). "
+            f"Nothing to discover from yet.",
+            retryable=False,
+        )
+    signals = [
+        QuerySignal(
+            query=row.get("query", ""),
+            impressions=int(row.get("impressions", 0) or 0),
+            clicks=int(row.get("clicks", 0) or 0),
+            ctr=float(row.get("ctr", 0.0) or 0.0) / 100.0,  # GSC returns ctr as a percentage (0-100)
+            avg_position=float(row.get("position", 0.0) or 0.0),
+            source="gsc",
+        )
+        for row in rows
+        if (row.get("query") or "").strip()
+    ]
+    return await discover_opportunities(
+        ctx, DiscoverOpportunitiesParams(site_id=params.site_id, queries=signals, limit=params.limit),
+    )
+
+
 @chat.function(
     "list_opportunities",
     description="List content opportunities, optionally filtered by site and status.",
@@ -2446,7 +2546,14 @@ async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINo
             )
         )
 
-    return ui.Card(title="Projects", content=ui.Stack(direction="v", gap=2, children=children))
+    # No ui.Card wrapper here on purpose -- left-sidebar blocks in this app
+    # follow the platform's own sidebar UX rule: no padded/filled/bordered
+    # "card" container, just a plain Stack with a Header, separated from the
+    # next sidebar block by a Divider (see queue_panel) rather than a box.
+    return ui.Stack(
+        direction="v", gap=2,
+        children=[ui.Header(text="Projects", level=3)] + children,
+    )
 
 
 @ext.panel(
@@ -2492,6 +2599,7 @@ async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwar
             gap=3,
             children=[
                 projects_card,
+                ui.Divider(),
                 sites_button,
                 filter_row,
                 ui.Empty(
@@ -2536,6 +2644,7 @@ async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwar
         gap=3,
         children=[
             projects_card,
+            ui.Divider(),
             sites_button,
             filter_row,
             ui.List(items=items, searchable=True),
@@ -3017,11 +3126,37 @@ async def sources_panel(ctx, **kwargs) -> object:
             on_click=ui.Call("run_content_audit", site_id=site_id),
         )
 
+        # Only offer opportunity discovery once the mandatory content-audit
+        # gate is satisfied — matches discover_opportunities's own server-side
+        # check, so the button never fires into a guaranteed error.
+        discover_button = ui.Button(
+            "🧭 Discover from Search Console",
+            variant="primary", size="sm", full_width=True,
+            on_click=ui.Call("discover_opportunities_from_search_console", site_id=site_id, limit=20),
+            disabled=not bool(audit_page.data),
+        )
+
+        cannibalization_form = ui.Form(
+            action="check_keyword_cannibalization",
+            submit_label="Check cannibalization",
+            defaults={"site_id": site_id},
+            children=[
+                ui.Input(
+                    param_name="candidate_keyword",
+                    placeholder="New topic/keyword to check before writing (optional)",
+                ),
+            ],
+        )
+
         cards.append(
             ui.Card(
                 title=data.get("brand_name") or site_id,
                 subtitle=data.get("domain", ""),
-                content=ui.Stack(direction="v", gap=2, children=audit_body + decay_body + visual_body + [audit_button]),
+                content=ui.Stack(
+                    direction="v", gap=2,
+                    children=audit_body + decay_body + visual_body
+                    + [audit_button, discover_button, cannibalization_form],
+                ),
             )
         )
 

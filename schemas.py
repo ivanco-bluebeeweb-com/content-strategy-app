@@ -219,6 +219,17 @@ class DiscoverOpportunitiesParams(BaseModel):
     limit: int = Field(20, description="Max opportunities to surface (1-100)")
 
 
+class DiscoverOpportunitiesFromSearchConsoleParams(BaseModel):
+    """UI-only convenience wrapper: fetches the site's own Search Console
+    top_queries via IPC (no manual JSON copy-paste) and feeds them straight
+    into discover_opportunities's existing scoring/clustering/audit-gate
+    logic. Exists so the panel's 'Discover from Search Console' button has
+    something concrete to call — discover_opportunities itself stays pure
+    and testable, taking queries as plain input."""
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    limit: int = Field(20, description="Max Search Console query rows to fetch and turn into opportunities (1-100)")
+
+
 class ListOpportunitiesParams(BaseModel):
     site_id: str = Field("", description="Optional site filter. Empty = all sites.")
     status: str = Field("", description="Optional lifecycle status filter, e.g. 'idea', 'approved'.")

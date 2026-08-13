@@ -963,15 +963,16 @@ async def test_fetch_connected_sites_reports_unreachable_provider_instead_of_hid
 @pytest.mark.asyncio
 async def test_sources_panel_shows_not_loaded_yet_before_first_refresh():
     """Panel RENDER never calls the flaky IPC path directly -- before the
-    cache is warmed by a real list_connected_sites call, the card says so
-    honestly instead of erroring or vanishing."""
+    cache is warmed by the automatic schedule tick, the card says so
+    honestly instead of erroring or vanishing, and carries NO Refresh
+    button: the refresh is automatic (csa_connected_sites_refresh)."""
     ctx = MockContext()
     _wp_provider(ctx)
     node = await m.sources_panel(ctx)
     rendered = repr(node)
     assert "Quick Add" in rendered
     assert "Not loaded yet" in rendered
-    assert "Refresh" in rendered
+    assert "Refresh" not in rendered
 
 
 @pytest.mark.asyncio
@@ -989,7 +990,8 @@ async def test_sources_panel_shows_quick_add_for_unclaimed_connected_site_after_
 @pytest.mark.asyncio
 async def test_sources_panel_quick_add_card_visible_even_when_provider_unreachable():
     """The whole point of the fix: no provider reachable still shows the card,
-    naming the provider and the reason, plus a Refresh button."""
+    naming the provider and the reason, and carries NO Refresh button: the
+    refresh is automatic (csa_connected_sites_refresh)."""
     ctx = MockContext()  # no providers registered
     await m.list_connected_sites(ctx, ListConnectedSitesParams())  # warms the cache with the failure
     node = await m.sources_panel(ctx)
@@ -997,7 +999,7 @@ async def test_sources_panel_quick_add_card_visible_even_when_provider_unreachab
     assert "Quick Add" in rendered
     assert "Could not read connected sites from" in rendered
     assert "wordpress-hub" in rendered
-    assert "Refresh" in rendered
+    assert "Refresh" not in rendered
 
 
 @pytest.mark.asyncio

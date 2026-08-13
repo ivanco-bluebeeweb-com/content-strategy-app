@@ -7760,7 +7760,12 @@
     }
   ],
   "signals": [],
-  "schedules": [],
+  "schedules": [
+    {
+      "name": "csa_connected_sites_refresh",
+      "cron": "10 * * * *"
+    }
+  ],
   "required_scopes": [],
   "icon_size_bytes": 290,
   "lifecycle": {

@@ -144,6 +144,26 @@ async def expose_register_project(ctx, site_id: str = "", domain: str = "",
 # and Quick Add picks it up automatically -- no panel code changes needed.
 SITE_PROVIDER_APP_IDS: list[str] = ["wordpress-hub"]
 
+# Marketplace display_name for each provider app_id -- shown under a
+# connected site's bare domain in Quick Add so it's clear WHERE that site
+# comes from, using the same name the user sees when browsing the
+# Marketplace (confirmed via marketplace.list_my_installed), not the raw
+# app_id slug.
+PROVIDER_DISPLAY_NAMES: dict[str, str] = {
+    "wordpress-hub": "WordPress Hub",
+    "sites-registry": "Sites Registry",
+}
+
+
+def provider_display_name(app_id: str) -> str:
+    return PROVIDER_DISPLAY_NAMES.get(app_id, app_id)
+
+
+def _bare_domain(url: str) -> str:
+    """Strip a leading scheme (https://, http://) for display -- Quick Add
+    shows the domain a human recognises, not the URL a browser needs."""
+    return (url or "").strip().split("://", 1)[-1].rstrip("/") or url
+
 
 def _canonical_site_id(row: dict) -> str:
     """Normalise a provider's site identifier to its bare domain.
@@ -2578,6 +2598,25 @@ async def list_connected_sites(ctx, params: ListConnectedSitesParams) -> ActionR
     )
 
 
+@ext.schedule("csa_connected_sites_refresh", "10 * * * *")
+async def csa_connected_sites_refresh(ctx) -> None:
+    """Keeps the Quick Add connected-sites cache warm with NO button and NO
+    chat message -- the whole point of this tick.
+
+    WHY A SEPARATE SCHEDULE INSTEAD OF A BUTTON. `ctx.extensions.call` made
+    from inside a *panel render* has been observed to reach the target
+    extension with an empty user context (kernel-side gap, see
+    _cache_connected_sites's own comment) -- so the panel can never refresh
+    itself live. A real `@ext.schedule` tick is, like `list_connected_sites`
+    itself, a normal call path with a populated context, so it is the
+    correct place to do this automatically instead of asking a human to
+    click Refresh every time a site gets connected or disconnected
+    elsewhere.
+    """
+    sites, problems = await fetch_connected_sites(ctx)
+    await _cache_connected_sites(ctx, sites, problems)
+
+
 _STATUS_COLOR = {
     "idea": "gray",
     "brief_ready": "blue",
@@ -3076,28 +3115,24 @@ def _quick_add_block(connected_sites: list[dict], existing_site_ids: set[str],
 
     ALWAYS returns a card, never None: if there is nothing to offer, the card
     says WHY (no provider reachable / nothing connected / all already added /
-    not loaded yet) and carries a Refresh button that runs the REAL read
-    (list_connected_sites) and re-renders. A silently missing card is
-    unfixable from the UI, which is exactly the failure mode this replaces.
+    not loaded yet). The cache behind this is kept warm automatically by the
+    csa_connected_sites_refresh schedule tick -- no Refresh button: a live
+    ctx.extensions.call from inside a panel render is unreliable (see
+    _cache_connected_sites), so a manual retry button would just be a coin
+    flip.
     """
     problems = problems or []
     candidates = [s for s in connected_sites if s.get("site_id") not in existing_site_ids]
-
-    refresh = ui.Button(
-        "Refresh", variant="secondary", size="sm", icon="RefreshCw",
-        on_click=ui.Call("list_connected_sites"),
-    )
 
     if not has_cache and not connected_sites and not problems:
         return ui.Card(
             title="Quick Add — from connected sites",
             content=ui.Stack(direction="v", gap=2, children=[
                 ui.Text(
-                    "Not loaded yet — click Refresh to pull sites connected "
-                    "in WordPress Hub (or any future site provider).",
+                    "Not loaded yet — sites connected in WordPress Hub (or any "
+                    "future site provider) appear here automatically within the hour.",
                     variant="caption",
                 ),
-                refresh,
             ]),
         )
 
@@ -3108,18 +3143,21 @@ def _quick_add_block(connected_sites: list[dict], existing_site_ids: set[str],
                 "click one to register it.",
                 variant="caption",
             ),
-            ui.Stack(direction="h", gap=1, wrap=True, children=[
-                ui.Button(
-                    s.get("name") or s["site_id"],
-                    variant="secondary", size="sm", icon="Plus",
-                    on_click=ui.Call(
-                        "create_site_profile",
-                        site_id=s["site_id"],
-                        domain=(s.get("url", "").replace("https://", "").replace("http://", "").rstrip("/")
-                                or s["site_id"]),
-                        brand_name=s.get("name") or "",
+            ui.Stack(direction="h", gap=2, wrap=True, children=[
+                ui.Stack(direction="v", gap=0, children=[
+                    ui.Button(
+                        _bare_domain(s.get("url", "")) or s["site_id"],
+                        variant="secondary", size="sm", icon="Plus",
+                        on_click=ui.Call(
+                            "create_site_profile",
+                            site_id=s["site_id"],
+                            domain=(s.get("url", "").replace("https://", "").replace("http://", "").rstrip("/")
+                                    or s["site_id"]),
+                            brand_name=s.get("name") or "",
+                        ),
                     ),
-                )
+                    ui.Text(provider_display_name(s.get("provider", "")), variant="caption"),
+                ])
                 for s in candidates
             ]),
         ]
@@ -3146,7 +3184,7 @@ def _quick_add_block(connected_sites: list[dict], existing_site_ids: set[str],
 
     return ui.Card(
         title="Quick Add — from connected sites",
-        content=ui.Stack(direction="v", gap=2, children=body + [refresh]),
+        content=ui.Stack(direction="v", gap=2, children=body),
     )
 
 

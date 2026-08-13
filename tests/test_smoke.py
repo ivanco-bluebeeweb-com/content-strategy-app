@@ -1415,6 +1415,21 @@ async def test_queue_panel_add_project_button_opens_dialog_on_demand():
 
 
 @pytest.mark.asyncio
+async def test_brief_panel_detail_view_has_back_to_briefs_button():
+    """The brief detail screen (queue_item_id given) must carry a gray,
+    medium, left-arrow-icon 'back' button naming its real destination --
+    per the platform UX rule -- that routes back to this project's briefs
+    catalog (brief_panel(site_id=...)), not a bare unlabeled 'Back'."""
+    ctx = MockContext()
+    queue_item_id, _brief_id = await _site_with_brief_ready_queue_item(ctx)
+    rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
+    assert "Back to Briefs" in rendered
+    assert "'variant': 'secondary'" in rendered
+    assert "'icon': 'ArrowLeft'" in rendered
+    assert "'site_id': 'g4s.md'" in rendered
+
+
+@pytest.mark.asyncio
 async def test_brief_panel_shows_project_briefs_catalog_when_site_id_given_without_queue_item():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(

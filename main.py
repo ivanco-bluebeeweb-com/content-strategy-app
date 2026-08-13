@@ -2762,6 +2762,14 @@ async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", **kwargs)
     status = q.get("lifecycle_status", "idea")
     title = brief.get("working_title") or opp.get("primary_query") or q.get("primary_query") or "Untitled"
 
+    # Back button to the briefs list this detail page was opened from --
+    # gray, medium, left-pointing arrow icon on the left of the label, with
+    # the label naming the actual destination rather than a bare "Back".
+    back_button = ui.Button(
+        "Back to Briefs", variant="secondary", size="md", icon="ArrowLeft",
+        on_click=ui.Call("__panel__brief", site_id=q.get("site_id", "")),
+    )
+
     header = ui.Header(title, level=2, subtitle=f"{q.get('site_id', '')} · {_STATUS_LABEL.get(status, status)}")
 
     kv_items = [
@@ -2774,7 +2782,7 @@ async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", **kwargs)
     ]
     overview_card = ui.Card(title="Overview", content=ui.KeyValue(columns=2, items=kv_items))
 
-    sections = [header, overview_card]
+    sections = [back_button, header, overview_card]
 
     if brief:
         sections.append(

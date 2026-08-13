@@ -225,21 +225,18 @@ async def test_content_calendar_reports_current_and_stale_visual_baseline_withou
 
 
 @pytest.mark.asyncio
-async def test_queue_panel_empty_state_has_sites_button():
-    """The right-slot Sites panel (where Quick Add lives) is not guaranteed
-    to auto-open at session start the way the left slot is. Editorial Queue
-    (left slot, always on screen) must carry an explicit button to reach it
-    -- otherwise Quick Add could be reachable only by luck of panel timing,
-    which is exactly what the user hit."""
+async def test_queue_panel_empty_state_has_no_sites_button():
+    """The 'Sites -- manage & Quick Add' button was removed from this sidebar
+    per explicit request -- Sites/Quick Add is reached through normal panel
+    navigation instead of a duplicate shortcut button here."""
     ctx = MockContext()
     node = await m.queue_panel(ctx)
     rendered = repr(node)
-    assert "Sites" in rendered
-    assert "__panel__sources" in rendered
+    assert "__panel__sources" not in rendered
 
 
 @pytest.mark.asyncio
-async def test_queue_panel_with_items_still_has_sites_button():
+async def test_queue_panel_with_items_still_has_no_sites_button():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
     await _seed_audit(ctx, "g4s.md")
@@ -249,8 +246,7 @@ async def test_queue_panel_with_items_still_has_sites_button():
     ))
     node = await m.queue_panel(ctx)
     rendered = repr(node)
-    assert "Sites" in rendered
-    assert "__panel__sources" in rendered
+    assert "__panel__sources" not in rendered
 
 
 @pytest.mark.asyncio
@@ -1324,15 +1320,20 @@ async def test_create_brief_selects_article_language_external_source_then_fallba
 
 @pytest.mark.asyncio
 async def test_queue_panel_shows_projects_section_with_existing_sites():
+    """No 'Projects' header (removed per explicit request) -- the project
+    list and Add-project CTA stand on their own. The list is also not
+    searchable (search removed per explicit request) and the Add button is
+    the blue/primary CTA of this sidebar."""
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(
         site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
     ))
     node = await m.queue_panel(ctx)
     rendered = repr(node)
-    assert "Projects" in rendered
     assert "G4S Moldova" in rendered
     assert "Add new project" in rendered
+    assert "'variant': 'primary'" in rendered
+    assert "'searchable': False" in rendered
 
 
 @pytest.mark.asyncio
@@ -1340,9 +1341,9 @@ async def test_queue_panel_projects_section_empty_state():
     ctx = MockContext()
     node = await m.queue_panel(ctx)
     rendered = repr(node)
-    assert "Projects" in rendered
     assert "No projects yet" in rendered
     assert "Add new project" in rendered
+    assert "'variant': 'primary'" in rendered
 
 
 @pytest.mark.asyncio

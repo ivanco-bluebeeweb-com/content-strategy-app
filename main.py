@@ -2550,13 +2550,13 @@ async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINo
     ]
 
     add_project_button = ui.Button(
-        "➕ Add new project", variant="secondary", size="sm", full_width=True,
+        "➕ Add new project", variant="primary", size="sm", full_width=True,
         on_click=ui.Call("__panel__queue", site_id=site_id, show_add_project="1"),
     )
 
     children: list[ui.UINode] = [add_project_button]
     if project_items:
-        children.append(ui.List(items=project_items, searchable=True))
+        children.append(ui.List(items=project_items, searchable=False))
     else:
         children.append(ui.Empty(message="No projects yet — add one to get started.", icon="🗂️"))
 
@@ -2580,11 +2580,13 @@ async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINo
 
     # No ui.Card wrapper here on purpose -- left-sidebar blocks in this app
     # follow the platform's own sidebar UX rule: no padded/filled/bordered
-    # "card" container, just a plain Stack with a Header, separated from the
-    # next sidebar block by a Divider (see queue_panel) rather than a box.
+    # "card" container, just a plain Stack, separated from the next sidebar
+    # block by a Divider (see queue_panel) rather than a box. No section
+    # header here either, per explicit request -- the Add-project CTA and
+    # the project list speak for themselves without a "Projects" label.
     return ui.Stack(
         direction="v", gap=2,
-        children=[ui.Header(text="Projects", level=3)] + children,
+        children=children,
     )
 
 
@@ -2598,7 +2600,8 @@ async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINo
     max_width=460,
 )
 async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwargs) -> object:
-    """Left sidebar: Projects section + a button into the Sites panel.
+    """Left sidebar: just the Projects section (no header, no search, no
+    Sites/Quick Add button -- all removed per explicit request).
 
     No queue/briefs listing here on purpose (removed per explicit request) --
     a project's own briefs are already one click away via _briefs_catalog_view
@@ -2606,28 +2609,12 @@ async def queue_panel(ctx, site_id: str = "", show_add_project: str = "", **kwar
     duplicate, searchable list of the same items in the sidebar was pure
     clutter. Same goes for the 'Filter by site' Select it depended on --
     with no queue list left to filter, the control had no purpose either.
+
+    The Sites panel (Quick Add, site management) is still reachable via the
+    right-slot 'sources' panel through normal panel navigation -- it is just
+    no longer duplicated as a button here.
     """
-    projects_card = await _projects_section(ctx, site_id, show_add_project)
-
-    # Explicit button to open the Sites panel (right slot). The right slot's
-    # own auto-population at session init is not guaranteed the way the left
-    # slot's is, so Quick Add there could otherwise be reachable only by luck
-    # of panel-discovery timing. This button makes it reachable with one
-    # deliberate click, every time, from a panel that IS always on screen.
-    sites_button = ui.Button(
-        "🌐 Sites — manage & Quick Add", variant="secondary", size="sm", full_width=True,
-        on_click=ui.Call("__panel__sources"),
-    )
-
-    return ui.Stack(
-        direction="v",
-        gap=3,
-        children=[
-            projects_card,
-            ui.Divider(),
-            sites_button,
-        ],
-    )
+    return await _projects_section(ctx, site_id, show_add_project)
 
 
 def _outline_markdown(outline: list) -> str:

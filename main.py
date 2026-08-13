@@ -94,6 +94,46 @@ async def health_check(ctx) -> bool:
     return True
 
 
+@ext.expose("register_project", action_type="write")
+async def expose_register_project(ctx, site_id: str = "", domain: str = "",
+                                   name: str = "", **kwargs) -> dict:
+    """Inter-extension IPC surface (ctx.extensions.call) for Sites Registry:
+    called automatically whenever a site is registered there (manually,
+    via WordPress Hub's connect, or via a registry sync/backfill), so it
+    shows up here as an existing site profile without the user re-adding
+    it by hand.
+
+    Idempotent by design -- a site_id that already has a profile is left
+    completely untouched (never overwritten by a bare domain-only fan-out
+    call); only a genuinely new site_id gets a fresh, minimal profile.
+    Returns a plain dict (never surfaced to the LLM/user directly).
+    """
+    sid = (site_id or domain).strip()
+    if not sid:
+        return {"ok": False, "error": "site_id or domain is required.", "retryable": False}
+    existing = await ctx.store.query("site_profiles", where={"site_id": sid}, limit=1)
+    if existing.data:
+        return {"ok": True, "site_id": sid, "created": False}
+    await ctx.store.create(
+        "site_profiles",
+        {
+            "site_id": sid,
+            "domain": domain or sid,
+            "brand_name": name or sid,
+            "business_description": "",
+            "business_description_i18n": {},
+            "target_languages": [],
+            "content_categories": [],
+            "cta_default": "",
+            "cta_default_i18n": {},
+            "external_sources_i18n": {},
+            "approved_visual_guidance": {},
+            "requires_named_author": False,
+        },
+    )
+    return {"ok": True, "site_id": sid, "created": True}
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Cross-app site discovery for Quick Add -- not just WordPress, on purpose.
 # ──────────────────────────────────────────────────────────────────────────

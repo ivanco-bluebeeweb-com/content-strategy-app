@@ -1600,6 +1600,46 @@ async def test_brief_panel_shows_project_briefs_catalog_when_site_id_given_witho
 
 
 @pytest.mark.asyncio
+async def test_brief_panel_project_view_has_three_tabs_defaulting_to_briefs():
+    """Project detail (site_id given, no queue_item_id) must render the
+    Content Strategy / Content Plan / Content Briefs tab switcher, with
+    'briefs' as the default active tab so every existing caller that opens
+    __panel__brief with just site_id (no tab=) keeps seeing the briefs
+    catalogue exactly as before this feature existed."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
+    ))
+    await _seed_audit(ctx, "g4s.md")
+
+    default_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md"))
+    assert "Content Strategy" in default_rendered
+    assert "Content Plan" in default_rendered
+    assert "Content Briefs" in default_rendered
+    # Default tab content is still the briefs catalogue.
+    assert "Briefs (0)" in default_rendered
+    assert "Create new brief" in default_rendered
+    # The active tab's own button renders 'primary'; the others 'ghost'.
+    assert "'function': '__panel__brief', 'params': {'site_id': 'g4s.md', 'tab': 'briefs'" in default_rendered
+
+    strategy_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="strategy"))
+    assert "Content audit" in strategy_rendered
+    assert "Content decay" in strategy_rendered
+    assert "Tracked competitors" in strategy_rendered
+    assert "Named authors" in strategy_rendered
+    assert "'function': '__panel__brief', 'params': {'site_id': 'g4s.md', 'tab': 'strategy'" in strategy_rendered
+
+    plan_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="plan"))
+    assert "Publication calendar" in plan_rendered
+    assert "Build a monthly calendar" in plan_rendered
+    assert "Unscheduled backlog" in plan_rendered
+    assert "build_content_calendar" in plan_rendered
+
+    briefs_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="briefs"))
+    assert "Briefs (0)" in briefs_rendered
+
+
+@pytest.mark.asyncio
 async def test_brief_panel_create_brief_button_reveals_form_with_every_create_brief_field():
     """The 'Create new brief' CTA above the briefs list must reveal a form
     carrying every field create_brief actually accepts: which opportunity,

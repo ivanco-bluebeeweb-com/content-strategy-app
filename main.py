@@ -2926,6 +2926,244 @@ async def _create_brief_form(ctx, site_id: str, profile: dict) -> ui.UINode:
     )
 
 
+_PROJECT_TAB_ORDER = [
+    ("strategy", "Content Strategy"),
+    ("plan", "Content Plan"),
+    ("briefs", "Content Briefs"),
+]
+
+
+async def _content_strategy_tab_view(ctx, site_id: str, profile: dict) -> ui.UINode:
+    """'Content Strategy' tab: the site-level strategic picture -- the
+    mandatory content audit, content-decay tracking, approved visual
+    guidance handed down from Brand Strategy Hub, tracked competitors,
+    named authors (E-E-A-T), and any open keyword-cannibalization
+    findings. Mirrors what sources_panel already shows per site card in
+    the right sidebar, just surfaced here too so it's visible without
+    leaving the project you're already looking at."""
+    audit_page = await ctx.store.query("content_audits", where={"site_id": site_id}, limit=1)
+    sections: list[ui.UINode] = [ui.Header(text="Content audit", level=3)]
+    if audit_page.data:
+        audit = audit_page.data[0].data
+        sections.append(ui.KeyValue(columns=1, items=[
+            {"key": "Total posts", "value": str(audit.get("total_posts", 0))},
+            {"key": "Thin content", "value": str(audit.get("thin_content_count", 0))},
+            {"key": "Cannibalizing pairs", "value": str(audit.get("cannibalization_pairs_found", 0))},
+            {"key": "Audited", "value": audit.get("audited_at", "?")},
+        ]))
+        needs_doing = audit.get("needs_doing", [])
+        if needs_doing:
+            sections.append(ui.Text("Needs doing:", variant="caption"))
+            sections.append(ui.List(items=[
+                ui.ListItem(id=f"audit-needs-{i}", title=item) for i, item in enumerate(needs_doing)
+            ]))
+    else:
+        sections.append(ui.Text("⚠️ Never run — required before new opportunities.", variant="caption"))
+    sections.append(ui.Button(
+        "🔎 Run content audit" if not audit_page.data else "🔎 Re-run content audit",
+        variant="secondary", size="sm",
+        on_click=ui.Call("run_content_audit", site_id=site_id),
+    ))
+
+    sections.append(ui.Divider())
+    decay_page = await ctx.store.query("content_decay_reports", where={"site_id": site_id}, limit=1)
+    sections.append(ui.Header(text="Content decay", level=3))
+    if decay_page.data:
+        decay = decay_page.data[0].data
+        sections.append(ui.KeyValue(columns=1, items=[
+            {"key": "Decaying", "value": str(decay.get("decaying_count", 0))},
+            {"key": "Improving", "value": str(decay.get("improving_count", 0))},
+            {"key": "New baseline", "value": str(decay.get("new_count", 0))},
+            {"key": "Checked", "value": decay.get("checked_at", "?")},
+        ]))
+        decaying_items = decay.get("decaying_items", [])
+        if decaying_items:
+            sections.append(ui.Text("Needs refreshing:", variant="caption"))
+            sections.append(ui.List(items=[
+                ui.ListItem(id=f"decay-{i}", title=item.get("url", "")) for i, item in enumerate(decaying_items[:10])
+            ]))
+    else:
+        sections.append(ui.Text(
+            "No content decay report yet — run track_content_decay with fresh GSC/DataForSEO numbers.",
+            variant="caption",
+        ))
+
+    sections.append(ui.Divider())
+    visual_guidance = profile.get("approved_visual_guidance", {})
+    sections.append(ui.Header(text="Approved visual guidance", level=3))
+    if visual_guidance:
+        sections.append(ui.KeyValue(columns=1, items=[
+            {"key": "Profile", "value": visual_guidance.get("profile_id", "Approved profile")},
+            {"key": "Visual intent", "value": visual_guidance.get("visual_intent", "—")},
+            {"key": "Style direction", "value": visual_guidance.get("style_direction", "—")},
+            {"key": "Approval basis", "value": f"Profile r{visual_guidance.get('profile_revision', '—')} · VBS r{visual_guidance.get('vbs_revision', '—')}"},
+        ]))
+        sections.append(ui.Text(
+            "Read-only, non-generative constraint passed downstream to briefs.", variant="caption",
+        ))
+    else:
+        sections.append(ui.Text(
+            "No approved visual guidance linked yet (comes from Brand Strategy Hub).", variant="caption",
+        ))
+
+    sections.append(ui.Divider())
+    comp_page = await ctx.store.query("site_competitors", where={"site_id": site_id}, limit=50)
+    sections.append(ui.Header(text=f"Tracked competitors ({len(comp_page.data)})", level=3))
+    if comp_page.data:
+        sections.append(ui.List(items=[
+            ui.ListItem(
+                id=d.id,
+                title=d.data.get("name", d.id),
+                subtitle=d.data.get("url", ""),
+                meta=", ".join(d.data.get("competing_topics", [])[:3]),
+            )
+            for d in comp_page.data
+        ]))
+    else:
+        sections.append(ui.Text("No competitors tracked yet — add one with add_site_competitor.", variant="caption"))
+
+    sections.append(ui.Divider())
+    author_page = await ctx.store.query("content_authors", where={"site_id": site_id}, limit=50)
+    sections.append(ui.Header(text=f"Named authors ({len(author_page.data)})", level=3))
+    if author_page.data:
+        sections.append(ui.List(items=[
+            ui.ListItem(
+                id=d.id,
+                title=d.data.get("name", d.id),
+                subtitle=", ".join(d.data.get("expertise_areas", [])[:3]),
+            )
+            for d in author_page.data
+        ]))
+    else:
+        sections.append(ui.Text(
+            "No named authors registered yet — required for E-E-A-T on YMYL sites.", variant="caption",
+        ))
+
+    sections.append(ui.Divider())
+    # Only offer opportunity discovery once the mandatory content-audit gate
+    # is satisfied -- matches discover_opportunities's own server-side check.
+    sections.append(ui.Button(
+        "🧭 Discover from Search Console",
+        variant="primary", size="sm",
+        on_click=ui.Call("discover_opportunities_from_search_console", site_id=site_id, limit=20),
+        disabled=not bool(audit_page.data),
+    ))
+
+    cannibalization_body = await _open_cannibalization_findings_block(ctx, site_id)
+    if cannibalization_body:
+        sections.append(ui.Divider())
+        sections.extend(cannibalization_body)
+        sections.append(ui.Form(
+            action="check_keyword_cannibalization",
+            submit_label="Check cannibalization",
+            defaults={"site_id": site_id},
+            children=[
+                ui.Input(param_name="candidate_keyword",
+                         placeholder="New topic/keyword to check before writing (optional)"),
+            ],
+        ))
+
+    return ui.Stack(direction="v", gap=3, children=sections)
+
+
+async def _content_plan_tab_view(ctx, site_id: str) -> ui.UINode:
+    """'Content Plan' tab: the monthly publication calendar (queue items
+    that already have a scheduled_date), a 'Build calendar' form wrapping
+    build_content_calendar, and the unscheduled backlog -- items already
+    brief_ready or later that have no scheduled_date yet."""
+    q_page = await ctx.store.query("queue_items", where={"site_id": site_id}, order_by="-created_at", limit=500)
+    all_items = list(q_page.data)
+    scheduled = sorted(
+        (d for d in all_items if d.data.get("scheduled_date")),
+        key=lambda d: d.data.get("scheduled_date", ""),
+    )
+    backlog = [
+        d for d in all_items
+        if not d.data.get("scheduled_date") and d.data.get("lifecycle_status") != "idea"
+    ]
+
+    def _queue_list_item(d, show_date: bool) -> ui.UINode:
+        status = d.data.get("lifecycle_status", "idea")
+        return ui.ListItem(
+            id=d.id,
+            title=d.data.get("working_title") or d.data.get("primary_query") or "(untitled)",
+            subtitle=d.data.get("scheduled_date", "") if show_date else _STATUS_LABEL.get(status, status),
+            meta=_STATUS_LABEL.get(status, status) if show_date else "",
+            badge=ui.Badge(_STATUS_LABEL.get(status, status), color=_STATUS_COLOR.get(status, "gray")),
+            on_click=ui.Call("__panel__brief", queue_item_id=d.id),
+        )
+
+    sections: list[ui.UINode] = [ui.Header(text=f"Publication calendar ({len(scheduled)} scheduled)", level=3)]
+    if scheduled:
+        sections.append(ui.List(items=[_queue_list_item(d, show_date=True) for d in scheduled]))
+    else:
+        sections.append(ui.Empty(message="Nothing scheduled yet — build a calendar below.", icon="🗓️"))
+
+    sections.append(ui.Divider())
+    sections.append(ui.Header(text="Build a monthly calendar", level=3))
+    sections.append(ui.Form(
+        action="build_content_calendar",
+        submit_label="Build calendar",
+        defaults={"site_id": site_id},
+        children=[
+            ui.Input(param_name="year", placeholder=f"Year, e.g. {_date.today().year}"),
+            ui.Input(param_name="month", placeholder="Month (1-12)"),
+            ui.Input(param_name="posts_per_week", placeholder="Posts per week (default 2)"),
+        ],
+    ))
+
+    sections.append(ui.Divider())
+    sections.append(ui.Header(text=f"Unscheduled backlog ({len(backlog)})", level=3))
+    if backlog:
+        sections.append(ui.List(items=[_queue_list_item(d, show_date=False) for d in backlog]))
+    else:
+        sections.append(ui.Text("Nothing ready to schedule yet.", variant="caption"))
+
+    return ui.Stack(direction="v", gap=3, children=sections)
+
+
+async def _project_tabs_view(ctx, site_id: str, show_create_brief: str, tab: str) -> ui.UINode:
+    """Project detail = 3 tabs -- Content Strategy / Content Plan / Content
+    Briefs -- same tab-switcher pattern as Brand Strategy Hub's
+    brand_detail_panel (ui.Tabs itself does not switch content client-side
+    on this platform -- documented platform bug -- so each tab is its own
+    ui.Button re-invoking this same panel with tab=<key>). Default tab is
+    'briefs' so brief_panel(ctx, site_id=...) with no explicit tab keeps
+    rendering the briefs catalogue directly, exactly as before this feature
+    existed -- nothing that already links here without a tab= param breaks.
+    """
+    tab_keys = {key for key, _label in _PROJECT_TAB_ORDER}
+    active_tab = tab if tab in tab_keys else "briefs"
+
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)
+    profile = profile_page.data[0].data if profile_page.data else {}
+    project_label = profile.get("brand_name") or site_id
+
+    if active_tab == "strategy":
+        content = await _content_strategy_tab_view(ctx, site_id, profile)
+    elif active_tab == "plan":
+        content = await _content_plan_tab_view(ctx, site_id)
+    else:
+        content = await _briefs_catalog_view(ctx, site_id, show_create_brief)
+
+    tab_switcher = ui.Row(gap=2, children=[
+        ui.Button(
+            label,
+            variant="primary" if key == active_tab else "ghost",
+            size="sm",
+            on_click=ui.Call("__panel__brief", site_id=site_id, tab=key, show_create_brief=show_create_brief),
+        )
+        for key, label in _PROJECT_TAB_ORDER
+    ])
+
+    return ui.Stack(direction="v", gap=3, children=[
+        ui.Header(text=project_label, level=2),
+        tab_switcher,
+        ui.Divider(),
+        content,
+    ])
+
+
 async def _briefs_catalog_view(ctx, site_id: str, show_create_brief: str = "") -> ui.UINode:
     """Central catalogue of one project's briefs. Visually mirrors Media
     Hub's _packages_view: a header carrying a live count + status
@@ -2996,10 +3234,10 @@ async def _briefs_catalog_view(ctx, site_id: str, show_create_brief: str = "") -
     icon="📝",
     center_overlay=True,
 )
-async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", show_create_brief: str = "", **kwargs) -> object:
+async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", show_create_brief: str = "", tab: str = "", **kwargs) -> object:
     if not queue_item_id:
         if site_id:
-            return await _briefs_catalog_view(ctx, site_id, show_create_brief)
+            return await _project_tabs_view(ctx, site_id, show_create_brief, tab)
         return ui.Empty(message="Select a project to see its briefs.", icon="📝")
 
     q_doc = await ctx.store.get("queue_items", queue_item_id)

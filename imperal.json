@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.9.13",
+  "sdk_version": "5.9.19",
   "app_id": "content-strategy-app",
   "version": "0.7.0",
   "name": "Content Strategy",
@@ -5017,6 +5017,31 @@
             },
             "title": "Author Credentials",
             "type": "array"
+          },
+          "resolved_category": {
+            "default": "",
+            "title": "Resolved Category",
+            "type": "string"
+          },
+          "resolved_category_id": {
+            "default": 0,
+            "title": "Resolved Category Id",
+            "type": "integer"
+          },
+          "category_resolution_reason": {
+            "default": "",
+            "title": "Category Resolution Reason",
+            "type": "string"
+          },
+          "brand_readiness_checked": {
+            "default": false,
+            "title": "Brand Readiness Checked",
+            "type": "boolean"
+          },
+          "brand_id": {
+            "default": "",
+            "title": "Brand Id",
+            "type": "string"
           }
         },
         "required": [
@@ -5946,6 +5971,31 @@
             },
             "title": "Author Credentials",
             "type": "array"
+          },
+          "resolved_category": {
+            "default": "",
+            "title": "Resolved Category",
+            "type": "string"
+          },
+          "resolved_category_id": {
+            "default": 0,
+            "title": "Resolved Category Id",
+            "type": "integer"
+          },
+          "category_resolution_reason": {
+            "default": "",
+            "title": "Category Resolution Reason",
+            "type": "string"
+          },
+          "brand_readiness_checked": {
+            "default": false,
+            "title": "Brand Readiness Checked",
+            "type": "boolean"
+          },
+          "brand_id": {
+            "default": "",
+            "title": "Brand Id",
+            "type": "string"
           }
         },
         "required": [
@@ -6421,6 +6471,16 @@
             "title": "Author Credentials",
             "type": "array"
           },
+          "resolved_category": {
+            "default": "",
+            "title": "Resolved Category",
+            "type": "string"
+          },
+          "category_resolution_reason": {
+            "default": "",
+            "title": "Category Resolution Reason",
+            "type": "string"
+          },
           "approved_visual_guidance": {
             "additionalProperties": true,
             "default": {},
@@ -6726,6 +6786,31 @@
                 },
                 "title": "Author Credentials",
                 "type": "array"
+              },
+              "resolved_category": {
+                "default": "",
+                "title": "Resolved Category",
+                "type": "string"
+              },
+              "resolved_category_id": {
+                "default": 0,
+                "title": "Resolved Category Id",
+                "type": "integer"
+              },
+              "category_resolution_reason": {
+                "default": "",
+                "title": "Category Resolution Reason",
+                "type": "string"
+              },
+              "brand_readiness_checked": {
+                "default": false,
+                "title": "Brand Readiness Checked",
+                "type": "boolean"
+              },
+              "brand_id": {
+                "default": "",
+                "title": "Brand Id",
+                "type": "string"
               }
             },
             "required": [
@@ -7768,6 +7853,12 @@
   ],
   "required_scopes": [],
   "icon_size_bytes": 290,
+  "exposed": [
+    {
+      "name": "register_project",
+      "action_type": "write"
+    }
+  ],
   "lifecycle": {
     "health_check": {
       "interval_sec": 60

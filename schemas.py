@@ -24,6 +24,7 @@ class SiteProfile(sdl.Entity):
     business_description_i18n: dict[str, str] = {}  # optional per-language override, e.g. {"ru": "...", "ro": "..."}
     target_languages: list[str] = []
     content_categories: list[str] = []
+    content_categories_i18n: dict[str, list[str]] = {}  # optional per-language override, e.g. {"ru": [...], "ro": [...]} -- avoids splicing untranslated category text into another language's generated titles
     cta_default: str = ""
     cta_default_i18n: dict[str, str] = {}  # optional per-language override for cta_default
     external_sources_i18n: dict[str, list[str]] = {}  # verified source URLs, keyed by source language
@@ -47,6 +48,7 @@ class UpdateSiteProfileParams(BaseModel):
     business_description_i18n: dict[str, str] | None = Field(default=None, description="Replace per-language business_description overrides; omit to keep")
     target_languages: list[str] | None = Field(default=None, description="Replace target languages; omit to keep")
     content_categories: list[str] | None = Field(default=None, description="Replace content categories/topics; omit to keep")
+    content_categories_i18n: dict[str, list[str]] | None = Field(default=None, description="Replace per-language content_categories overrides, e.g. {'ru': [...], 'ro': [...]}; omit to keep. Prevents generate_strategic_topics from splicing untranslated category text into another language's titles.")
     cta_default: str | None = Field(default=None, description="New default CTA; omit to keep")
     cta_default_i18n: dict[str, str] | None = Field(default=None, description="Replace per-language CTA overrides; omit to keep")
     requires_named_author: bool | None = Field(default=None, description="Replace the E-E-A-T named-author requirement flag; omit to keep")

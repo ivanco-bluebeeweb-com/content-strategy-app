@@ -396,7 +396,7 @@ async def update_site_profile(ctx, params: UpdateSiteProfileParams) -> ActionRes
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
-    for field in ("business_description_i18n", "target_languages", "content_categories", "cta_default_i18n", "external_sources_i18n", "approved_visual_guidance"):
+    for field in ("business_description_i18n", "target_languages", "content_categories", "content_categories_i18n", "cta_default_i18n", "external_sources_i18n", "approved_visual_guidance"):
         value = getattr(params, field)
         if value is not None:
             updates[field] = value
@@ -1630,6 +1630,16 @@ async def generate_strategic_topics(ctx, params: GenerateStrategicTopicsParams) 
 
     language = params.language or (profile.get("target_languages") or ["ro"])[0]
 
+    # Prefer a per-language translation of the declared categories when the
+    # site profile has one (content_categories_i18n, same convention as
+    # business_description_i18n/cta_default_i18n) -- otherwise the raw
+    # content_categories text (written in whatever language it happened to be
+    # authored in) gets spliced untranslated into a DIFFERENT language's
+    # title template below, producing broken mixed-language titles.
+    categories_i18n = profile.get("content_categories_i18n", {}) or {}
+    lang_key_for_categories = language.lower()[:2]
+    localized_categories = categories_i18n.get(lang_key_for_categories) or content_categories
+
     # Build the covered-terms set from BOTH existing opportunities (any
     # source) and already-published content (from the audit's existing
     # content items) so a strategic topic never duplicates a query already
@@ -1644,7 +1654,7 @@ async def generate_strategic_topics(ctx, params: GenerateStrategicTopicsParams) 
         covered_terms.update(t.lower() for t in d.data.get("top_terms", []))
 
     candidates = _generate_strategic_candidates(
-        content_categories=content_categories,
+        content_categories=localized_categories,
         covered_terms=covered_terms,
         language=language,
         per_category=max(1, min(params.per_category, 10)),

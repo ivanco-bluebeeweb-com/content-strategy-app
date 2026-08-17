@@ -906,6 +906,25 @@ def _walk(node, seen_types):
     return seen_types
 
 
+def _count_type(node, node_type_name):
+    count = 0
+    if isinstance(node, dict):
+        for value in node.values():
+            count += _count_type(value, node_type_name)
+        return count
+    if isinstance(node, list):
+        for item in node:
+            count += _count_type(item, node_type_name)
+        return count
+    node_type = getattr(node, "type", None)
+    if node_type == node_type_name:
+        count += 1
+    props = getattr(node, "props", {}) or {}
+    for value in props.values():
+        count += _count_type(value, node_type_name)
+    return count
+
+
 @pytest.mark.asyncio
 async def test_sources_panel_empty_state_has_create_form():
     ctx = MockContext()
@@ -1588,6 +1607,24 @@ async def test_brief_panel_detail_view_has_back_to_briefs_button():
 
 
 @pytest.mark.asyncio
+async def test_brief_panel_detail_view_uses_accordion_not_cards():
+    """The brief detail screen (queue_item_id given) must be built from a
+    ui.Accordion (Overview/Outline/Image requirements sections), not
+    ui.Card blocks stacked one under another -- Overview open by default,
+    matching the same accordion-first pattern already used for the
+    project-level Overview tab."""
+    ctx = MockContext()
+    queue_item_id, _brief_id = await _site_with_brief_ready_queue_item(ctx)
+    rendered = repr(await m.brief_panel(ctx, queue_item_id=queue_item_id))
+    assert "type='Accordion'" in rendered
+    assert "type='Card'" not in rendered
+    assert "'id': 'overview', 'title': 'Overview'" in rendered
+    assert "'expanded': True" in rendered
+    assert "'id': 'outline', 'title': 'Outline'" in rendered
+    assert "'id': 'image_requirements', 'title': 'Image requirements'" in rendered
+
+
+@pytest.mark.asyncio
 async def test_brief_panel_shows_project_briefs_catalog_when_site_id_given_without_queue_item():
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(
@@ -1641,8 +1678,9 @@ async def test_brief_panel_project_view_has_three_tabs_defaulting_to_overview():
     assert "Unscheduled backlog" in rendered
     assert "build_content_calendar" in rendered
 
-    # Content Briefs tab content -- unchanged catalogue, now inside an
-    # Accordion section instead of a bare Header.
+    # Content Briefs tab content renders directly (no wrapping Accordion
+    # around the whole catalogue) -- its own header text confirms this,
+    # and a dedicated test below checks the Accordion count precisely.
     assert "Briefs (0)" in rendered
     assert "Create new brief" in rendered
 
@@ -1650,6 +1688,32 @@ async def test_brief_panel_project_view_has_three_tabs_defaulting_to_overview():
     # deep link from the brief detail page's Back button).
     briefs_first = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="briefs"))
     assert "'default_tab': 2" in briefs_first
+
+
+@pytest.mark.asyncio
+async def test_content_briefs_tab_body_has_no_wrapping_accordion():
+    """Content Briefs is the one tab whose content must render directly --
+    no ui.Accordion wraps the whole catalogue (unlike Overview and Content
+    Plan, which are grab-bags of several unrelated topics and benefit from
+    being collapsible). The tree still contains exactly 2 Accordion nodes
+    overall (Overview's own + Content Plan's own), from the other two tabs
+    that are always rendered alongside it inside the same ui.Tabs."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
+    ))
+    await _seed_audit(ctx, "g4s.md")
+    disc = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="security services chisinau", clicks=10, impressions=200, ctr=0.05, avg_position=8.0)],
+    ))
+    await m.create_brief(ctx, CreateBriefParams(opportunity_id=disc.data.items[0].id))
+
+    node = await m.brief_panel(ctx, site_id="g4s.md", tab="briefs")
+    assert _count_type(node, "Accordion") == 2
+    rendered = repr(node)
+    assert "Briefs (1)" in rendered
+    assert "Create new brief" in rendered
 
 
 @pytest.mark.asyncio

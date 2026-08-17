@@ -3230,8 +3230,14 @@ async def _briefs_catalog_view(ctx, site_id: str, show_create_brief: str = "") -
         ]
         catalog_children.append(ui.List(items=items, searchable=True))
 
-    return ui.Accordion(allow_multiple=True, sections=[
-        {"id": "briefs", "title": f"{project_label} · Briefs ({total})", "children": catalog_children, "expanded": True},
+    # NOTE: this is rendered directly as the "Content Briefs" tab's body --
+    # no wrapping ui.Accordion here. Unlike the Overview tab (a grab-bag of
+    # several unrelated topics that benefits from being collapsible), this
+    # tab has exactly one thing to show, so its content should render
+    # immediately instead of hiding behind one more click.
+    return ui.Stack(direction="v", gap=3, children=[
+        ui.Header(text=f"{project_label} · Briefs ({total})", level=3),
+        *catalog_children,
     ])
 
 
@@ -3292,17 +3298,15 @@ async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", show_crea
         {"key": "Impressions", "value": str(opp.get("impressions", "—"))},
         {"key": "Avg. position", "value": str(opp.get("avg_position", "—"))},
     ]
-    overview_card = ui.Card(title="Overview", content=ui.KeyValue(columns=2, items=kv_items))
-
-    sections = [back_button, header, overview_card]
+    accordion_sections = [
+        {"id": "overview", "title": "Overview", "children": [ui.KeyValue(columns=2, items=kv_items)], "expanded": True},
+    ]
 
     if brief:
-        sections.append(
-            ui.Card(
-                title="Outline",
-                content=ui.Markdown(content=_outline_markdown(brief.get("outline", []))),
-            )
-        )
+        accordion_sections.append({
+            "id": "outline", "title": "Outline",
+            "children": [ui.Markdown(content=_outline_markdown(brief.get("outline", [])))],
+        })
         visual_guidance = brief.get("approved_visual_guidance", {})
         image_text = brief.get("image_text", "")
         if brief.get("text_policy") == "allow_text" and image_text:
@@ -3381,26 +3385,25 @@ async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", show_crea
                     variant="caption",
                 ),
             ]
-        sections.append(
-            ui.Card(
-                title="Image requirements",
-                subtitle="Read-only downstream guidance; no media is generated here",
-                content=ui.Stack(direction="v", gap=2, children=image_children),
-            )
-        )
+        image_children_title = "Image requirements"
+        accordion_sections.append({
+            "id": "image_requirements", "title": image_children_title,
+            "children": [ui.Text(
+                "Read-only downstream guidance; no media is generated here",
+                variant="caption",
+            )] + image_children,
+        })
         cta = brief.get("cta_goal", "")
-        if cta:
-            sections.append(ui.Text(f"CTA goal: {cta}", variant="caption"))
+        cta_block = [ui.Text(f"CTA goal: {cta}", variant="caption")] if cta else []
     else:
-        sections.append(
-            ui.Card(
-                title="Brief",
-                content=ui.Text(
-                    "No brief yet. Ask Webbee to generate one for this opportunity "
-                    "(create_brief)."
-                ),
-            )
-        )
+        accordion_sections.append({
+            "id": "brief", "title": "Brief",
+            "children": [ui.Text(
+                "No brief yet. Ask Webbee to generate one for this opportunity "
+                "(create_brief)."
+            )],
+        })
+        cta_block = []
 
     # Lifecycle status transitions — simple linear buttons, always available
     # so the user (or Webbee on their behalf) can move an item forward or
@@ -3418,9 +3421,15 @@ async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", show_crea
                     on_click=ui.Call("update_queue_status", queue_item_id=queue_item_id, lifecycle_status=next_status),
                 )
             )
-    sections.append(ui.Row(gap=2, children=transitions or [ui.Text("Published — end of lifecycle.", variant="caption")]))
+    status_row = ui.Row(gap=2, children=transitions or [ui.Text("Published — end of lifecycle.", variant="caption")])
 
-    return ui.Stack(direction="v", gap=4, children=sections)
+    return ui.Stack(direction="v", gap=4, children=[
+        back_button,
+        header,
+        ui.Accordion(allow_multiple=True, sections=accordion_sections),
+        *cta_block,
+        status_row,
+    ])
 
 
 def _quick_add_block(connected_sites: list[dict], existing_site_ids: set[str],

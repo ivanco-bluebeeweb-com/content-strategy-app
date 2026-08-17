@@ -54,7 +54,7 @@ from schemas import (
 )
 from link_policy import language_priority, resolve_external_source, resolve_key_action_page
 from converters import (
-    guess_intent, cluster_label, priority_score,
+    guess_intent, guess_funnel_stage, cluster_label, priority_score,
     decide_image_text_policy as _decide_image_text_policy,
     detect_language_fallback as _detect_language_fallback,
     to_opportunity as _to_opportunity,
@@ -1412,6 +1412,8 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
                 "supporting_queries": supporting,
                 "query_cluster_label": label,
                 "intent": intent,
+                "funnel_stage": funnel_stage,
+                "funnel_stage_reason": funnel_stage_reason,
                 "impressions": total_impressions,
                 "clicks": total_clicks,
                 "ctr": round(ctr, 4),

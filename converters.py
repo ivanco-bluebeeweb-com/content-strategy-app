@@ -321,6 +321,7 @@ def to_site_profile(d) -> SiteProfile:
         business_description_i18n=data.get("business_description_i18n", {}),
         target_languages=data.get("target_languages", []),
         content_categories=data.get("content_categories", []),
+        content_categories_i18n=data.get("content_categories_i18n", {}),
         cta_default=data.get("cta_default", ""),
         cta_default_i18n=data.get("cta_default_i18n", {}),
         external_sources_i18n=data.get("external_sources_i18n", {}),

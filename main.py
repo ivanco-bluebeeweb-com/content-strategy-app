@@ -1648,6 +1648,7 @@ async def generate_strategic_topics(ctx, params: GenerateStrategicTopicsParams) 
         covered_terms=covered_terms,
         language=language,
         per_category=max(1, min(params.per_category, 10)),
+        funnel_focus=params.funnel_focus.strip().lower(),
     )
     candidates = candidates[: max(1, min(params.limit, 100))]
 

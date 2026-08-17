@@ -548,6 +548,7 @@ def generate_strategic_candidates(
     language: str = "ro",
     per_category: int = 3,
     balance_funnel: bool = True,
+    funnel_focus: str = "",
 ) -> list[dict]:
     """Generate NEW candidate topics beyond any existing opportunity/query
     signal, by applying a fixed library of funnel-stage question patterns to
@@ -567,6 +568,12 @@ def generate_strategic_candidates(
     stages rather than all-tofu or all-bofu -- the same "beyond existing"
     goal this whole engine exists for would be defeated if it only ever
     generated awareness-stage filler.
+
+    funnel_focus (optional: 'tofu'|'mofu'|'bofu') overrides the rotation and
+    forces EVERY generated candidate to that single stage -- e.g. when a
+    site's TOFU/MOFU coverage already comes from real query signals and the
+    deliberate gap to fill is specifically bottom-of-funnel (ready-to-buy)
+    content, one per category, instead of guessing at a proxy topic.
     """
     lang_key = language.lower()[:2]
     lang_key = lang_key if lang_key in ("ro", "ru") else "en"
@@ -582,10 +589,13 @@ def generate_strategic_candidates(
             # in existing opportunities/content -- skip generating more
             # near-duplicate topics for it rather than pad the queue.
             continue
-        stages_for_cat = (
-            [_FUNNEL_ORDER[(stage_cycle_idx + i) % 3] for i in range(per_category)]
-            if balance_funnel else ["tofu"] * per_category
-        )
+        if funnel_focus in ("tofu", "mofu", "bofu"):
+            stages_for_cat = [funnel_focus] * per_category
+        else:
+            stages_for_cat = (
+                [_FUNNEL_ORDER[(stage_cycle_idx + i) % 3] for i in range(per_category)]
+                if balance_funnel else ["tofu"] * per_category
+            )
         stage_cycle_idx += 1
         for stage in stages_for_cat:
             patterns = _STRATEGIC_PATTERNS[stage]

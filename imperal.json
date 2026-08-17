@@ -4793,6 +4793,12 @@
             "title": "Per Category",
             "type": "integer"
           },
+          "funnel_focus": {
+            "default": "",
+            "description": "Optional: force every generated topic to one funnel stage -- 'tofu'|'mofu'|'bofu'. Empty = rotate evenly across all three stages per category. Use e.g. 'bofu' when TOFU/MOFU coverage already comes from real query signals and the deliberate gap is specifically bottom-of-funnel, ready-to-buy content.",
+            "title": "Funnel Focus",
+            "type": "string"
+          },
           "limit": {
             "default": 20,
             "description": "Max strategic opportunities to create this round (1-100)",

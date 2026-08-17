@@ -251,6 +251,7 @@ class GenerateStrategicTopicsParams(BaseModel):
     site_id: str = Field(description="Site id from list_site_profiles — never invent it")
     language: str = Field("", description="Language code to generate topic titles in (e.g. 'ro', 'ru'). Empty = site profile's first target language.")
     per_category: int = Field(3, description="How many new candidate topics to generate per uncovered content category (1-10)")
+    funnel_focus: str = Field("", description="Optional: force every generated topic to one funnel stage -- 'tofu'|'mofu'|'bofu'. Empty = rotate evenly across all three stages per category. Use e.g. 'bofu' when TOFU/MOFU coverage already comes from real query signals and the deliberate gap is specifically bottom-of-funnel, ready-to-buy content.")
     limit: int = Field(20, description="Max strategic opportunities to create this round (1-100)")
 
 

@@ -2655,3 +2655,28 @@ async def test_generate_strategic_topics_does_not_duplicate_existing_opportunity
     result = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(site_id="g4s.md"))
     assert result.status == "success"
     assert result.data.total == 0
+
+
+@pytest.mark.asyncio
+async def test_generate_strategic_topics_funnel_focus_forces_single_stage():
+    """funnel_focus='bofu' must force EVERY generated candidate to bofu --
+    this is what lets a caller deliberately fill a bottom-of-funnel gap
+    (e.g. 'the remaining N topics must be BOFU') instead of getting the
+    default tofu/mofu/bofu rotation."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md",
+        content_categories=["climatizare birou", "instalare aer conditionat", "ventilatie"],
+        target_languages=["ro"],
+    ))
+    await _seed_audit(ctx, "g4s.md")
+
+    from schemas import GenerateStrategicTopicsParams
+    result = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(
+        site_id="g4s.md", per_category=2, funnel_focus="bofu",
+    ))
+    assert result.status == "success"
+    assert result.data.total == 6  # 3 categories x 2 each
+    for opp in result.data.items:
+        assert opp.funnel_stage == "bofu"
+        assert opp.source == "strategic_gap_analysis"

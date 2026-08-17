@@ -1505,16 +1505,23 @@ async def test_queue_panel_shows_projects_section_with_existing_sites():
     """No 'Projects' header (removed per explicit request) -- the project
     list and Add-project CTA stand on their own. The list is also not
     searchable (search removed per explicit request) and the Add button is
-    the blue/primary CTA of this sidebar."""
+    the blue/primary CTA of this sidebar, large, with a white plus icon.
+    Each project row shows a single line -- the bare domain (example.com
+    form, no scheme/www/path) -- with the brief count on the left via
+    ListItem's own meta field, not a title+subtitle pair."""
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(
-        site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
+        site_id="g4s.md", domain="https://www.g4s.md/some/path", brand_name="G4S Moldova",
     ))
     node = await m.queue_panel(ctx)
     rendered = repr(node)
-    assert "G4S Moldova" in rendered
+    assert "g4s.md" in rendered
+    assert "G4S Moldova" not in rendered
+    assert "'meta': '0 briefs'" in rendered
     assert "Add new project" in rendered
     assert "'variant': 'primary'" in rendered
+    assert "'size': 'lg'" in rendered
+    assert "'icon': 'Plus'" in rendered
     assert "'searchable': False" in rendered
 
 

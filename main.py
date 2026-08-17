@@ -166,6 +166,21 @@ def _bare_domain(url: str) -> str:
     return (url or "").strip().split("://", 1)[-1].rstrip("/") or url
 
 
+def _display_domain(value: str) -> str:
+    """Reduce any URL/domain/site_id string down to a bare 'example.com'
+    form: no scheme, no leading www., no path/query/fragment, no port,
+    no trailing slash. Used for the sidebar project list, which must show
+    only the clean domain -- nothing else."""
+    host = (value or "").strip()
+    host = host.split("://", 1)[-1]  # drop scheme
+    host = host.split("/", 1)[0]  # drop path
+    host = host.split("?", 1)[0].split("#", 1)[0]  # drop query/fragment (belt & suspenders)
+    host = host.split(":", 1)[0]  # drop port
+    if host.startswith("www."):
+        host = host[4:]
+    return host or (value or "")
+
+
 def _canonical_site_id(row: dict) -> str:
     """Normalise a provider's site identifier to its bare domain.
 
@@ -2730,8 +2745,7 @@ async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINo
     project_items = [
         ui.ListItem(
             id=d.data.get("site_id", d.id),
-            title=d.data.get("brand_name") or d.data.get("site_id", d.id),
-            subtitle=d.data.get("domain", ""),
+            title=_display_domain(d.data.get("domain") or d.data.get("site_id", d.id)),
             meta=f"{brief_count_by_site.get(d.data.get('site_id', ''), 0)} briefs",
             selected=(d.data.get("site_id") == site_id and bool(site_id)),
             on_click=ui.Call("__panel__brief", site_id=d.data.get("site_id", d.id)),
@@ -2740,7 +2754,8 @@ async def _projects_section(ctx, site_id: str, show_add_project: str) -> ui.UINo
     ]
 
     add_project_button = ui.Button(
-        "➕ Add new project", variant="primary", size="sm", full_width=True,
+        "Add new project", variant="primary", size="lg", full_width=True,
+        icon="Plus",
         on_click=ui.Call("__panel__queue", site_id=site_id, show_add_project="1"),
     )
 

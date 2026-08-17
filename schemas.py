@@ -55,13 +55,16 @@ class UpdateSiteProfileParams(BaseModel):
 
 
 class Opportunity(sdl.Entity):
-    """One candidate content opportunity, sourced from GSC / SEO Audit / manual."""
+    """One candidate content opportunity, sourced from GSC / SEO Audit / manual /
+    strategic gap analysis (this app's own topic-generation engine)."""
     site_id: str = ""
-    source: str = ""  # gsc | seo_audit | manual | mixed
+    source: str = ""  # gsc | seo_audit | manual | mixed | strategic_gap_analysis
     primary_query: str = ""
     supporting_queries: list[str] = []
     query_cluster_label: str = ""
     intent: str = ""  # informational | commercial | navigational
+    funnel_stage: str = ""  # tofu | mofu | bofu -- where this topic sits in the buyer journey, never left implicit
+    funnel_stage_reason: str = ""  # why this stage was assigned -- auditable, not a silent guess
     impressions: int = 0
     clicks: int = 0
     ctr: float = 0.0
@@ -71,6 +74,7 @@ class Opportunity(sdl.Entity):
     total_priority_score: float = 0.0
     recommended_content_type: str = ""
     recommended_target_url: str = ""
+    strategic_rationale: str = ""  # for source='strategic_gap_analysis': WHY this topic was generated (which gap it fills)
     status: str = "idea"  # idea|brief_ready|draft_requested|draft_ready|approved|published
 
 
@@ -101,6 +105,7 @@ class ArticleBrief(sdl.Entity, sdl.Bodied):
     target_language: str = ""
     target_audience: str = ""
     search_intent: str = ""
+    funnel_stage: str = ""  # tofu | mofu | bofu -- copied from the source opportunity, drives outline shape and CTA strength
     primary_query: str = ""
     secondary_queries: list[str] = []
     outline: list[str] = []
@@ -375,6 +380,8 @@ class MediaBriefHandoff(sdl.Entity):
     style_direction: str = ""
     text_policy: str = "no_text"  # carried from the brief's own text_policy into Media Studio's create_media_brief
     image_text: str = ""  # the EXACT words carried from the brief -- required by Media Studio whenever text_policy='allow_text'
+    visual_subject: str = ""  # what's physically in the shot + action -- derived from primary_query+resolved_category, never invented; "" only if both are somehow blank
+    visual_environment: str = ""  # scene/setting -- from the approved Visual Profile's own visual_intent when set; "" is honest (no visual_intent on file) and Media Studio's own generic fallback still guarantees the final prompt is never blank there
     provider_policy: str = "third_party_only_unless_technical_failure"
     generation_boundary: str = "This handoff does not create a media package or generate assets."
     source_brief_id: str = ""
@@ -391,6 +398,11 @@ class BuildMediaBriefHandoffParams(BaseModel):
 
 class RefreshBriefVisualGuidanceParams(BaseModel):
     brief_id: str = Field(description="UUID of an existing article brief — from list_briefs, never invented")
+
+
+class UpdateBriefTitleParams(BaseModel):
+    brief_id: str = Field(description="UUID of an existing article brief — from list_briefs, never invented")
+    working_title: str = Field(min_length=1, description="The corrected title, written in the brief's OWN target_language — never invent a translation, pass real text (e.g. from that language's own Search Console data or a human-provided translation)")
 
 
 class WriterBrief(sdl.Entity, sdl.Bodied):
@@ -633,6 +645,17 @@ class GetContentDecayParams(BaseModel):
 
 
 class PurgePipelineDataParams(BaseModel):
+    confirm_wipe: bool = Field(
+        False,
+        description=(
+            "Must be explicitly true to run the purge. Safety flag so this can "
+            "never fire by accident from a misread instruction."
+        ),
+    )
+
+
+class PurgeSitePipelineDataParams(BaseModel):
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it. Only THIS site's pipeline data is removed; every other site's opportunities/briefs/queue/etc. are untouched.")
     confirm_wipe: bool = Field(
         False,
         description=(

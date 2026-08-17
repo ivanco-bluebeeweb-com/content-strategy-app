@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.19",
   "app_id": "content-strategy-app",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "name": "Content Strategy",
   "description": "Plans what to write next for your sites. Discovers content opportunities from Google Search Console data, clusters them into topics, generates structured article briefs (with image requirements for downstream generation), and tracks each idea through an editorial queue from idea to published.",
   "icon": "icon.svg",
@@ -6013,6 +6013,334 @@
       "owner_chat_tool": "content-strategy-app"
     },
     {
+      "name": "update_brief_title",
+      "description": "Fix an existing brief's working_title in place -- for the known bug where a brief created for a SECOND language of the same opportunity kept the FIRST language's title (e.g. a Romanian brief still titled in Russian) because the opportunity's own stored query text was reused as-is. Pass the real, correctly-translated title for this brief's own target_language -- never invent a translation.",
+      "action_type": "write",
+      "chain_callable": false,
+      "effects": [
+        "update:article_brief"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "brief_id": {
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
+            "title": "Brief Id",
+            "type": "string"
+          },
+          "working_title": {
+            "description": "The corrected title, written in the brief's OWN target_language — never invent a translation, pass real text (e.g. from that language's own Search Console data or a human-provided translation)",
+            "minLength": 1,
+            "title": "Working Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brief_id",
+          "working_title"
+        ],
+        "title": "UpdateBriefTitleParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Structured brief handed downstream to article writing / image planning.",
+        "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body",
+            "x-sdl-role": "content.body"
+          },
+          "body_format": {
+            "anyOf": [
+              {
+                "enum": [
+                  "md",
+                  "html",
+                  "plain",
+                  "rich"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Body Format",
+            "x-sdl-role": "content.body_format"
+          },
+          "raw_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Raw Body",
+            "x-sdl-role": "content.raw_body"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "default": "brief_ready",
+            "title": "Status",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "opportunity_id": {
+            "default": "",
+            "title": "Opportunity Id",
+            "type": "string"
+          },
+          "working_title": {
+            "default": "",
+            "title": "Working Title",
+            "type": "string"
+          },
+          "target_language": {
+            "default": "",
+            "title": "Target Language",
+            "type": "string"
+          },
+          "target_audience": {
+            "default": "",
+            "title": "Target Audience",
+            "type": "string"
+          },
+          "search_intent": {
+            "default": "",
+            "title": "Search Intent",
+            "type": "string"
+          },
+          "primary_query": {
+            "default": "",
+            "title": "Primary Query",
+            "type": "string"
+          },
+          "secondary_queries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Secondary Queries",
+            "type": "array"
+          },
+          "outline": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Outline",
+            "type": "array"
+          },
+          "cta_goal": {
+            "default": "",
+            "title": "Cta Goal",
+            "type": "string"
+          },
+          "internal_link_targets": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Internal Link Targets",
+            "type": "array"
+          },
+          "differentiation_notes": {
+            "default": "",
+            "title": "Differentiation Notes",
+            "type": "string"
+          },
+          "image_requirements": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Image Requirements",
+            "type": "array"
+          },
+          "text_policy": {
+            "default": "no_text",
+            "title": "Text Policy",
+            "type": "string"
+          },
+          "image_text": {
+            "default": "",
+            "title": "Image Text",
+            "type": "string"
+          },
+          "approved_visual_guidance": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Approved Visual Guidance",
+            "type": "object"
+          },
+          "key_action_page_url": {
+            "default": "",
+            "title": "Key Action Page Url",
+            "type": "string"
+          },
+          "key_action_page_language": {
+            "default": "",
+            "title": "Key Action Page Language",
+            "type": "string"
+          },
+          "key_action_page_reason": {
+            "default": "",
+            "title": "Key Action Page Reason",
+            "type": "string"
+          },
+          "external_link_url": {
+            "default": "",
+            "title": "External Link Url",
+            "type": "string"
+          },
+          "external_link_language": {
+            "default": "",
+            "title": "External Link Language",
+            "type": "string"
+          },
+          "external_link_language_priority": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "External Link Language Priority",
+            "type": "array"
+          },
+          "author_id": {
+            "default": "",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "author_name": {
+            "default": "",
+            "title": "Author Name",
+            "type": "string"
+          },
+          "author_bio": {
+            "default": "",
+            "title": "Author Bio",
+            "type": "string"
+          },
+          "author_credentials": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Author Credentials",
+            "type": "array"
+          },
+          "resolved_category": {
+            "default": "",
+            "title": "Resolved Category",
+            "type": "string"
+          },
+          "resolved_category_id": {
+            "default": 0,
+            "title": "Resolved Category Id",
+            "type": "integer"
+          },
+          "category_resolution_reason": {
+            "default": "",
+            "title": "Category Resolution Reason",
+            "type": "string"
+          },
+          "brand_readiness_checked": {
+            "default": false,
+            "title": "Brand Readiness Checked",
+            "type": "boolean"
+          },
+          "brand_id": {
+            "default": "",
+            "title": "Brand Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "ArticleBrief",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "content-strategy-app.update_brief_title",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
       "name": "build_media_brief_handoff",
       "description": "Build a read-only Media Studio create_media_brief payload from an article brief and its approved visual guidance. It does not create a media package or generate images.",
       "action_type": "read",
@@ -6152,6 +6480,18 @@
           "image_text": {
             "default": "",
             "title": "Image Text",
+            "type": "string"
+          },
+          "visual_subject": {
+            "default": "",
+            "description": "What's physically in the shot + action -- derived from primary_query+resolved_category, never invented; \"\" only if both are somehow blank",
+            "title": "Visual Subject",
+            "type": "string"
+          },
+          "visual_environment": {
+            "default": "",
+            "description": "Scene/setting -- from the approved Visual Profile's own visual_intent when set; \"\" is honest (no visual_intent on file) and Media Studio's own generic fallback still guarantees the final prompt is never blank there",
+            "title": "Visual Environment",
             "type": "string"
           },
           "provider_policy": {
@@ -7684,6 +8024,148 @@
         "x-sdl": "entity"
       },
       "event": "pipeline_purged",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "purge_site_pipeline_data",
+      "description": "Wipe ALL working pipeline data for ONE site -- its opportunities, article briefs, editorial queue items, tracked competitors, content audits, and cannibalization findings. Every OTHER site's data is untouched. The site profile itself is NEVER removed. Irreversible. Requires confirm_wipe=true.",
+      "action_type": "destructive",
+      "chain_callable": true,
+      "effects": [
+        "delete:opportunity",
+        "delete:article_brief",
+        "delete:queue_item",
+        "delete:site_competitor",
+        "delete:content_audit",
+        "delete:cannibalization_finding"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles — never invent it. Only THIS site's pipeline data is removed; every other site's opportunities/briefs/queue/etc. are untouched.",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "confirm_wipe": {
+            "default": false,
+            "description": "Must be explicitly true to run the purge. Safety flag so this can never fire by accident from a misread instruction.",
+            "title": "Confirm Wipe",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "PurgeSitePipelineDataParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Outcome of a full pipeline data wipe — counts removed per collection,\nand which site profiles were kept untouched.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "integer"}
+            ],
+            "title": "Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "null"}
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "null"}
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {"type": "string"},
+              {"type": "null"}
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "opportunities_removed": {
+            "default": 0,
+            "title": "Opportunities Removed",
+            "type": "integer"
+          },
+          "briefs_removed": {
+            "default": 0,
+            "title": "Briefs Removed",
+            "type": "integer"
+          },
+          "queue_items_removed": {
+            "default": 0,
+            "title": "Queue Items Removed",
+            "type": "integer"
+          },
+          "competitors_removed": {
+            "default": 0,
+            "title": "Competitors Removed",
+            "type": "integer"
+          },
+          "content_audits_removed": {
+            "default": 0,
+            "title": "Content Audits Removed",
+            "type": "integer"
+          },
+          "cannibalization_findings_removed": {
+            "default": 0,
+            "title": "Cannibalization Findings Removed",
+            "type": "integer"
+          },
+          "authors_removed": {
+            "default": 0,
+            "title": "Authors Removed",
+            "type": "integer"
+          },
+          "decay_readings_removed": {
+            "default": 0,
+            "title": "Decay Readings Removed",
+            "type": "integer"
+          },
+          "kpi_snapshots_removed": {
+            "default": 0,
+            "title": "Kpi Snapshots Removed",
+            "type": "integer"
+          },
+          "outreach_targets_removed": {
+            "default": 0,
+            "title": "Outreach Targets Removed",
+            "type": "integer"
+          },
+          "kept_site_ids": {
+            "items": {"type": "string"},
+            "title": "Kept Site Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "PurgeResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "site_pipeline_purged",
       "background": false,
       "long_running": false,
       "scopes": [],

@@ -35,6 +35,62 @@ def guess_intent(query: str) -> str:
     return "informational"
 
 
+# ──────────────────────────────────────────────────────────────────────────
+# Funnel-stage classification (TOFU/MOFU/BOFU) -- deliberately separate from
+# guess_intent(): intent (informational/commercial/navigational) answers
+# "what is the searcher looking for", funnel_stage answers "how close is
+# this searcher to buying". A commercial-intent query like "climatizare
+# birou pret" is still often MOFU (comparing options) rather than BOFU
+# (ready to commit) -- collapsing the two into one field previously forced
+# a false choice at brief time. Every classification carries an explicit,
+# auditable reason string -- never a silent guess.
+# ──────────────────────────────────────────────────────────────────────────
+
+_BOFU_HINTS = (
+    # ready-to-buy: guarantees, ordering, quotes, reviews of who to hire,
+    # explicit "best company" comparisons aimed at a purchase decision
+    "guarantee", "warranty", "order", "buy now", "quote", "review", "reviews",
+    "best company", "hire",
+    "гарантия", "гарантией", "заказать", "заявка", "отзывы", "лучшая компания",
+    "рассчитать стоимость", "калькулятор",
+    "garanție", "garantie", "comandă", "comanda", "recenzii", "cea mai bună",
+    "calculator", "deviz",
+)
+_MOFU_HINTS = (
+    "price", "cost", "compare", "comparison", "vs", "how to choose",
+    "which is better",
+    "цена", "стоимость", "сравнение", "как выбрать", "какой лучше", "контракт",
+    "pret", "preț", "compara", "cum să alegi", "care este mai bun", "contract",
+)
+
+
+def guess_funnel_stage(query: str) -> tuple[str, str]:
+    """Classify a query into tofu (awareness -- broad/symptom/what-is
+    questions), mofu (consideration -- comparing options, pricing research)
+    or bofu (decision -- ready to order/hire, wants guarantees/reviews/a
+    quote right now). Returns (stage, reason) so the assignment is always
+    auditable, never a silent guess.
+
+    This is intentionally a THIRD axis from guess_intent(): a query can be
+    'commercial' intent (has a price/buy word) yet still be MOFU rather
+    than BOFU if it reads as comparison-shopping rather than a ready-to-
+    commit signal (an explicit "guarantee/order/reviews of who's best"
+    phrase). BOFU hints are checked first since they are the more specific
+    (and rarer) signal; MOFU hints are the broader comparison-shopping net;
+    anything left is TOFU by default -- awareness-stage content casts the
+    widest net and should never be silently reclassified as further down
+    the funnel just because it mentions a price word.
+    """
+    q = query.lower()
+    for hint in _BOFU_HINTS:
+        if hint in q:
+            return "bofu", f"Contains a ready-to-buy signal ('{hint}') -- guarantee/order/quote/reviews language."
+    for hint in _MOFU_HINTS:
+        if hint in q:
+            return "mofu", f"Contains a comparison/consideration signal ('{hint}') -- price research or option comparison."
+    return "tofu", "No purchase-decision or comparison-shopping signal found -- treated as awareness-stage."
+
+
 def decide_image_text_policy(
     search_intent: str, prohibited_patterns: list | None = None, candidate_text: str = "",
 ) -> tuple[str, str]:
@@ -140,6 +196,8 @@ def to_opportunity(d) -> Opportunity:
         supporting_queries=data.get("supporting_queries", []),
         query_cluster_label=data.get("query_cluster_label", ""),
         intent=data.get("intent", ""),
+        funnel_stage=data.get("funnel_stage", ""),
+        funnel_stage_reason=data.get("funnel_stage_reason", ""),
         impressions=data.get("impressions", 0),
         clicks=data.get("clicks", 0),
         ctr=data.get("ctr", 0.0),
@@ -149,6 +207,7 @@ def to_opportunity(d) -> Opportunity:
         total_priority_score=data.get("total_priority_score", 0.0),
         recommended_content_type=data.get("recommended_content_type", "article"),
         recommended_target_url=data.get("recommended_target_url", ""),
+        strategic_rationale=data.get("strategic_rationale", ""),
         status=data.get("status", "idea"),
     )
 
@@ -165,6 +224,7 @@ def to_brief(d) -> ArticleBrief:
         target_language=data.get("target_language", ""),
         target_audience=data.get("target_audience", ""),
         search_intent=data.get("search_intent", ""),
+        funnel_stage=data.get("funnel_stage", ""),
         primary_query=data.get("primary_query", ""),
         secondary_queries=data.get("secondary_queries", []),
         outline=data.get("outline", []),
@@ -440,3 +500,106 @@ def find_cannibalization_pairs(items: list[dict], min_overlap: float = 0.35) -> 
                     ),
                 })
     return findings
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Strategic topic generation -- the "beyond existing opportunities" engine.
+#
+# discover_opportunities only ever scores/clusters query signals the caller
+# already fetched from GSC/SEO Audit -- it cannot surface a topic nobody has
+# searched for YET, or a gap the site's own declared categories imply but no
+# query signal happens to cover this month. generate_strategic_candidates is
+# the deliberate second engine: it reasons from the site's OWN declared
+# content_categories (what this business says it does), cross-referenced
+# against topic terms that are ALREADY covered (existing opportunities +
+# published content, both passed in by the caller) so it never proposes a
+# duplicate, and produces new candidate topics using a fixed library of
+# funnel-stage question PATTERNS (awareness/comparison/decision) applied to
+# each uncovered category. This is a deterministic, auditable heuristic --
+# not a language model call -- but it is a genuinely different reasoning
+# step from clustering: pattern x category, minus what's covered, gives
+# topics that never appeared in any query signal at all.
+# ──────────────────────────────────────────────────────────────────────────
+
+_STRATEGIC_PATTERNS = {
+    "tofu": [
+        {"ro": "Ce este {cat} și când ai nevoie de el", "ru": "Что такое {cat} и когда это нужно", "en": "What is {cat} and when do you need it"},
+        {"ro": "Semne că ai nevoie de {cat}", "ru": "Признаки того, что вам нужен {cat}", "en": "Signs you need {cat}"},
+        {"ro": "Greșeli frecvente legate de {cat}", "ru": "Частые ошибки с {cat}", "en": "Common mistakes with {cat}"},
+    ],
+    "mofu": [
+        {"ro": "Cum alegi {cat} potrivit pentru afacerea ta", "ru": "Как выбрать {cat} для вашего бизнеса", "en": "How to choose the right {cat} for your business"},
+        {"ro": "{cat}: ce influențează prețul", "ru": "{cat}: от чего зависит цена", "en": "{cat}: what drives the price"},
+        {"ro": "{cat} vs alternative — comparație", "ru": "{cat} против альтернатив — сравнение", "en": "{cat} vs alternatives — comparison"},
+    ],
+    "bofu": [
+        {"ro": "Ofertă și deviz pentru {cat}", "ru": "Предложение и расчёт стоимости на {cat}", "en": "Quote and estimate for {cat}"},
+        {"ro": "Garanție și mentenanță pentru {cat}", "ru": "Гарантия и обслуживание {cat}", "en": "Warranty and maintenance for {cat}"},
+        {"ro": "De ce să alegi echipa noastră pentru {cat}", "ru": "Почему стоит выбрать нашу команду для {cat}", "en": "Why choose our team for {cat}"},
+    ],
+}
+
+_FUNNEL_ORDER = ("tofu", "mofu", "bofu")
+
+
+def generate_strategic_candidates(
+    content_categories: list[str],
+    covered_terms: set[str],
+    language: str = "ro",
+    per_category: int = 3,
+    balance_funnel: bool = True,
+) -> list[dict]:
+    """Generate NEW candidate topics beyond any existing opportunity/query
+    signal, by applying a fixed library of funnel-stage question patterns to
+    each of the site's own declared content_categories, skipping any
+    category already well-covered by covered_terms (token overlap check
+    against the category's own words -- same heuristic as resolve_category).
+
+    Returns a list of dicts: {title, funnel_stage, funnel_stage_reason,
+    category, strategic_rationale} -- ready to become Opportunity rows.
+    Deterministic and side-effect free so it is fully unit-testable without
+    IPC; the caller (generate_strategic_topics) is responsible for actually
+    persisting these and cross-checking exact-duplicate titles against
+    existing opportunities.
+
+    balance_funnel=True (default) rotates tofu/mofu/bofu evenly across the
+    categories in order, so a multi-category site gets a spread of funnel
+    stages rather than all-tofu or all-bofu -- the same "beyond existing"
+    goal this whole engine exists for would be defeated if it only ever
+    generated awareness-stage filler.
+    """
+    lang_key = language.lower()[:2]
+    lang_key = lang_key if lang_key in ("ro", "ru") else "en"
+    candidates: list[dict] = []
+    stage_cycle_idx = 0
+    for cat in content_categories:
+        cat_clean = cat.strip()
+        if not cat_clean:
+            continue
+        cat_tokens = {t for t in re.findall(r"[a-zA-Zа-яА-ЯёЁăâîșțĂÂÎȘȚ]+", cat_clean.lower()) if t not in _STOPWORDS and len(t) > 2}
+        if cat_tokens and covered_terms and len(cat_tokens & covered_terms) / max(len(cat_tokens), 1) >= 0.75:
+            # this category's own vocabulary is already heavily represented
+            # in existing opportunities/content -- skip generating more
+            # near-duplicate topics for it rather than pad the queue.
+            continue
+        stages_for_cat = (
+            [_FUNNEL_ORDER[(stage_cycle_idx + i) % 3] for i in range(per_category)]
+            if balance_funnel else ["tofu"] * per_category
+        )
+        stage_cycle_idx += 1
+        for stage in stages_for_cat:
+            patterns = _STRATEGIC_PATTERNS[stage]
+            pattern = patterns[len([c for c in candidates if c["funnel_stage"] == stage]) % len(patterns)]
+            title = pattern.get(lang_key, pattern["en"]).format(cat=cat_clean)
+            candidates.append({
+                "title": title,
+                "funnel_stage": stage,
+                "funnel_stage_reason": f"Generated from a {stage.upper()} question pattern applied to declared category '{cat_clean}', not copied from any existing query signal.",
+                "category": cat_clean,
+                "strategic_rationale": (
+                    f"Site declares '{cat_clean}' as a content category but no existing opportunity/content "
+                    f"covers a {stage.upper()}-stage angle for it -- this fills that gap intentionally, "
+                    f"expanding coverage beyond queries already seen in Search Console."
+                ),
+            })
+    return candidates

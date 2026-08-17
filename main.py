@@ -24,6 +24,7 @@ from imperal_sdk import ActionResult, Extension, ChatExtension, ui
 from schemas import (
     BuildContentCalendarParams, BuildMediaBriefHandoffParams, BuildWriterBriefParams, CreateBriefParams,
     RefreshBriefVisualGuidanceParams,
+    UpdateBriefTitleParams,
     CreateSiteProfileParams, DiscoverOpportunitiesParams,
     DiscoverOpportunitiesFromSearchConsoleParams, QuerySignal,
     GetContentCalendarParams, LinkExternalArticleParams,
@@ -48,7 +49,7 @@ from schemas import (
     ContentDecayReport, GetContentDecayParams,
     CannibalizationFinding, CannibalizationFindingList, CheckCannibalizationParams,
     ResolveCannibalizationParams,
-    PurgePipelineDataParams, PurgeResult,
+    PurgePipelineDataParams, PurgeSitePipelineDataParams, PurgeResult,
     ContentAuthor, ContentAuthorList, CreateContentAuthorParams, ListContentAuthorsParams,
 )
 from link_policy import language_priority, resolve_external_source, resolve_key_action_page
@@ -1380,6 +1381,7 @@ async def discover_opportunities(ctx, params: DiscoverOpportunitiesParams) -> Ac
             ctr = primary_sig.ctr
 
         intent = guess_intent(primary_sig.query)
+        funnel_stage, funnel_stage_reason = guess_funnel_stage(primary_sig.query)
         score = priority_score(total_impressions, total_clicks, ctr, avg_position)
 
         # business relevance: does this topic overlap with the site's own
@@ -2181,6 +2183,37 @@ async def refresh_brief_visual_guidance(ctx, params: RefreshBriefVisualGuidanceP
 
 
 @chat.function(
+    "update_brief_title",
+    description=(
+        "Fix an existing brief's working_title in place — for the known bug where a brief "
+        "created for a SECOND language of the same opportunity kept the FIRST language's title "
+        "(e.g. a Romanian brief still titled in Russian) because the opportunity's own stored "
+        "query text was reused as-is. Pass the real, correctly-translated title for this brief's "
+        "own target_language — never invent a translation."
+    ),
+    action_type="write",
+    effects=["update:article_brief"],
+    event="content-strategy-app.update_brief_title",
+    data_model=ArticleBrief,
+)
+async def update_brief_title(ctx, params: UpdateBriefTitleParams) -> ActionResult[ArticleBrief]:
+    """Overwrite one brief's working_title without touching its body/outline."""
+    brief_doc = await ctx.store.get("article_briefs", params.brief_id)
+    if not brief_doc:
+        return ActionResult.error(f"Brief '{params.brief_id}' not found.", retryable=False)
+    new_title = params.working_title.strip()
+    if not new_title:
+        return ActionResult.error("working_title cannot be empty.", retryable=False)
+    await ctx.store.update("article_briefs", brief_doc.id, {"working_title": new_title})
+    brief_doc.data["working_title"] = new_title
+    return ActionResult.success(
+        _to_brief(brief_doc),
+        summary=f"Brief title updated to '{new_title}'.",
+        refresh_panels=["queue"],
+    )
+
+
+@chat.function(
     "build_media_brief_handoff",
     description=(
         "Build a read-only Media Studio create_media_brief payload from an article brief and its approved visual guidance. "
@@ -2225,6 +2258,33 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
     text_policy, image_text = _decide_image_text_policy(
         brief.get("search_intent", ""), prohibited, candidate_text=brief.get("cta_goal", ""),
     )
+    # SYSTEM-LEVEL GUARANTEE (2026-08-18): Subject+Action and Environment/Context
+    # must never be left for Media Studio's engine to guess, even when this
+    # brief's own `summary`-equivalent context is thin. Built ONLY from fields
+    # `create_brief` guarantees are real, non-generic text -- never invented
+    # here:
+    #   - primary_query: the opportunity's real discovered search signal,
+    #     never blank (comes straight from live GSC/query data).
+    #   - resolved_category: `resolve_category`'s own contract guarantees a
+    #     real existing category OR an honestly-derived new name -- NEVER a
+    #     blank/generic "Blog" placeholder (see converters.resolve_category).
+    #   - target_audience: usually real (site's business description), but
+    #     IS allowed to be blank on a thin profile, so it's an optional
+    #     enrichment here, never a load-bearing requirement.
+    # visual_environment prefers the approved Visual Profile's own
+    # visual_intent (real, human-approved scene guidance) when present; if a
+    # brand has none set, this is left "" ON PURPOSE rather than fabricated --
+    # Media Studio's prompt engine guarantees (via its own generic fallback)
+    # that Environment is still never left blank in the final prompt either
+    # way. Two independent layers, so a missing upstream context is never a
+    # visible failure.
+    visual_subject = (
+        f"{brief.get('primary_query', '')} — a real, correctly installed "
+        f"scene representative of '{brief.get('resolved_category', '')}'"
+    ).strip(" —")
+    if brief.get("target_audience", ""):
+        visual_subject = f"{visual_subject}, relevant to {brief.get('target_audience', '')}"
+    visual_environment = guidance.get("visual_intent", "").strip()
     handoff = MediaBriefHandoff(
         id=f"media-handoff-{brief_doc.id}",
         title=f"Media brief handoff: {brief.get('working_title', '')}",
@@ -2242,6 +2302,8 @@ async def build_media_brief_handoff(ctx, params: BuildMediaBriefHandoffParams) -
         style_direction=" ".join(part for part in style_parts if part),
         text_policy=text_policy,
         image_text=image_text,
+        visual_subject=visual_subject,
+        visual_environment=visual_environment,
         source_brief_id=brief_doc.id,
         approved_visual_profile_id=guidance["profile_id"],
         approved_visual_profile_revision=guidance["profile_revision"],
@@ -2585,6 +2647,100 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
             f"{removed['kpi_snapshots'] + removed['kpi_dashboards']} KPI records, "
             f"{removed['outreach_targets']} outreach targets). "
             f"Kept {len(kept_site_ids)} connected site(s): {', '.join(kept_site_ids) or '—'}."
+        ),
+        refresh_panels=["queue", "sources"],
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Site-scoped pipeline wipe -- same contract as purge_pipeline_data above,
+# but restricted to ONE site's own records. Added because a full-portfolio
+# wipe is too blunt for the common real request "redo this ONE site's SEO
+# pipeline from scratch" (e.g. climtec.md) without touching every other
+# managed site (e.g. g4s.md) in the same call. Irreversible -- gated by the
+# same explicit confirm_wipe flag.
+# ──────────────────────────────────────────────────────────────────────────
+
+@chat.function(
+    "purge_site_pipeline_data",
+    description=(
+        "Wipe ALL working pipeline data for ONE site -- its opportunities, "
+        "article briefs, editorial queue items, tracked competitors, content "
+        "audits, and cannibalization findings. Every OTHER site's data is "
+        "untouched. The site profile itself is NEVER removed. "
+        "Irreversible. Requires confirm_wipe=true."
+    ),
+    action_type="destructive",
+    chain_callable=True,
+    effects=[
+        "delete:opportunity", "delete:article_brief", "delete:queue_item",
+        "delete:site_competitor", "delete:content_audit",
+        "delete:cannibalization_finding",
+    ],
+    event="site_pipeline_purged",
+    data_model=PurgeResult,
+)
+async def purge_site_pipeline_data(ctx, params: PurgeSitePipelineDataParams) -> ActionResult:
+    """Delete every pipeline working record for ONE site, keeping its site profile."""
+    if not params.confirm_wipe:
+        return ActionResult.error(
+            "Refusing to wipe pipeline data without confirm_wipe=true. "
+            f"This deletes ALL opportunities, briefs, queue items, tracked "
+            f"competitors, content audits, and cannibalization findings for "
+            f"site '{params.site_id}' only -- irreversibly. Re-call with "
+            f"confirm_wipe=true to proceed.",
+            retryable=True,
+        )
+
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(f"Site '{params.site_id}' not found in list_site_profiles.", retryable=False)
+
+    collections = [
+        "opportunities", "article_briefs", "queue_items",
+        "site_competitors", "content_audits", "cannibalization_findings",
+        "existing_content_items", "content_authors",
+        "content_decay_readings", "content_decay_reports",
+        "kpi_snapshots", "kpi_dashboards", "outreach_targets",
+    ]
+    removed = {}
+    for coll in collections:
+        page = await ctx.store.query(coll, where={"site_id": params.site_id}, limit=1000)
+        count = 0
+        for doc in page.data:
+            await ctx.store.delete(coll, doc.id)
+            count += 1
+        removed[coll] = count
+
+    result = PurgeResult(
+        id=f"site-pipeline-purge-{params.site_id}",
+        title=f"Pipeline data purge: {params.site_id}",
+        opportunities_removed=removed["opportunities"],
+        briefs_removed=removed["article_briefs"],
+        queue_items_removed=removed["queue_items"],
+        competitors_removed=removed["site_competitors"],
+        content_audits_removed=removed["content_audits"],
+        cannibalization_findings_removed=removed["cannibalization_findings"],
+        authors_removed=removed["content_authors"],
+        decay_readings_removed=removed["content_decay_readings"] + removed["content_decay_reports"],
+        kpi_snapshots_removed=removed["kpi_snapshots"] + removed["kpi_dashboards"],
+        outreach_targets_removed=removed["outreach_targets"],
+        kept_site_ids=[params.site_id],
+    )
+    total = sum(removed.values())
+    return ActionResult.success(
+        result,
+        summary=(
+            f"Purged {total} pipeline record(s) for site '{params.site_id}' "
+            f"({removed['opportunities']} opportunities, {removed['article_briefs']} briefs, "
+            f"{removed['queue_items']} queue items, {removed['site_competitors']} competitors, "
+            f"{removed['content_audits']} content audits, "
+            f"{removed['cannibalization_findings']} cannibalization findings, "
+            f"{removed['content_authors']} authors, "
+            f"{removed['content_decay_readings'] + removed['content_decay_reports']} decay records, "
+            f"{removed['kpi_snapshots'] + removed['kpi_dashboards']} KPI records, "
+            f"{removed['outreach_targets']} outreach targets). "
+            f"Site profile '{params.site_id}' itself was kept untouched."
         ),
         refresh_panels=["queue", "sources"],
     )

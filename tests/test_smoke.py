@@ -77,6 +77,34 @@ async def _configure_required_link_inputs(ctx, *, site_id="g4s.md", language="en
 
 
 @pytest.mark.asyncio
+async def test_run_content_audit_detects_language_when_wp_omits_lang_field():
+    """Task #1897: run_content_audit's posts_by_language must not always be
+    {"unknown": N} on a real bilingual site. When WordPress/Polylang doesn't
+    report a 'lang' field, fall back to a Cyrillic/Latin script heuristic
+    (converters.detect_language_fallback) instead of leaving everything
+    'unknown'."""
+    from schemas import RunContentAuditParams
+
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="bilingual.example", domain="bilingual.example"))
+
+    async def _posts(**kwargs):
+        return [
+            {"id": 1, "title": "Recuperator de caldura", "content": "Instalare recuperator de caldura in casa ta " * 40,
+             "link": "https://bilingual.example/ro/post-1", "slug": "post-1", "excerpt": "x"},
+            {"id": 2, "title": "Рекуператор тепла", "content": "Установка рекуператора тепла в вашем доме " * 40,
+             "link": "https://bilingual.example/ru/post-2", "slug": "post-2", "excerpt": "x"},
+        ]
+    ctx.extensions.register("wordpress-hub", "list_posts_full", _posts)
+
+    result = await m.run_content_audit(ctx, RunContentAuditParams(site_id="bilingual.example"))
+    assert result.status == "success"
+    assert result.data.posts_by_language.get("unknown") is None
+    assert result.data.posts_by_language.get("ru") == 1
+    assert result.data.posts_by_language.get("latin") == 1
+
+
+@pytest.mark.asyncio
 async def test_sources_panel_shows_approved_visual_guidance_as_read_only_context():
     ctx = MockContext()
     await m.create_site_profile(
@@ -312,6 +340,42 @@ async def test_discover_opportunities_creates_and_scores():
     )
     assert result.status == "success"
     assert len(result.data.items) == 2
+
+
+@pytest.mark.asyncio
+async def test_discover_opportunities_collapses_synonymous_queries_into_one_cluster():
+    """Task #1894: synonymous query variants (same cluster_label) must
+    collapse into ONE opportunity with supporting_queries, not one
+    opportunity per near-duplicate query -- otherwise 'N opportunities'
+    is really N near-identical restatements of the same topic, risking
+    keyword cannibalization between articles built from them."""
+    ctx = MockContext()
+    await m.create_site_profile(
+        ctx, CreateSiteProfileParams(site_id="climtec.md", domain="climtec.md")
+    )
+    await _seed_audit(ctx, "climtec.md")
+    result = await m.discover_opportunities(
+        ctx,
+        DiscoverOpportunitiesParams(
+            site_id="climtec.md",
+            queries=[
+                QuerySignal(query="recuperator caldura", source="gsc",
+                            impressions=300, clicks=5, ctr=0.017, avg_position=9.0),
+                QuerySignal(query="recuperatoare caldura", source="gsc",
+                            impressions=150, clicks=2, ctr=0.013, avg_position=11.0),
+                QuerySignal(query="recuperator de caldura", source="gsc",
+                            impressions=100, clicks=1, ctr=0.01, avg_position=13.0),
+                # unrelated topic -- must stay a separate opportunity
+                QuerySignal(query="pompa de caldura pret", source="gsc",
+                            impressions=80, clicks=1, ctr=0.0125, avg_position=14.0),
+            ],
+        ),
+    )
+    assert result.status == "success"
+    assert len(result.data.items) == 2
+    recuperator_op = next(o for o in result.data.items if "recuperator" in o.primary_query)
+    assert len(recuperator_op.supporting_queries) == 2
+    assert recuperator_op.impressions == 550  # 300 + 150 + 100 summed across the cluster
 
 
 @pytest.mark.asyncio
@@ -1112,6 +1176,61 @@ async def test_add_site_competitor_requires_existing_site_profile():
     ctx = MockContext()
     result = await m.add_site_competitor(ctx, AddSiteCompetitorParams(site_id="nope.md", name="X"))
     assert result.status == "error"
+
+
+@pytest.mark.asyncio
+async def test_create_brief_localizes_outline_cta_and_audience_per_language():
+    """Task #1900: when a site profile configures per-language overrides
+    (business_description_i18n/cta_default_i18n), ro/ru briefs for the SAME
+    opportunity must carry genuinely different target_audience/cta_goal/
+    outline text -- not the same Romanian copy relabeled with a different
+    target_language. Without real i18n overrides configured, this still
+    correctly falls back to the single unlocalized string (documented
+    limitation, not a bug: we never fabricate a translation)."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="climtec.md", domain="climtec.md", target_languages=["ru", "ro"],
+        business_description_i18n={
+            "ru": "Профессиональная установка HVAC",
+            "ro": "Instalare profesionala HVAC",
+        },
+        cta_default_i18n={"ru": "Позвоните нам", "ro": "Sunati-ne"},
+    ))
+    await _configure_required_link_inputs(ctx, site_id="climtec.md", language="ro")
+    ctx.extensions.register("wordpress-hub", "list_pages_full", _mock_action_pages([
+        {"title": "Contact", "slug": "contact-ro", "link": "https://climtec.md/ro/contact",
+         "content": "", "lang": "ro"},
+        {"title": "Contact", "slug": "contact-ru", "link": "https://climtec.md/ru/contact",
+         "content": "", "lang": "ru"},
+    ]))
+    from schemas import UpdateSiteProfileParams
+    await m.update_site_profile(ctx, UpdateSiteProfileParams(
+        site_id="climtec.md",
+        external_sources_i18n={"ru": ["https://source.example/ru"], "ro": ["https://source.example/ro"]},
+    ))
+    await _seed_audit(ctx, "climtec.md")
+
+    discovered = await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="climtec.md",
+        queries=[QuerySignal(query="recuperator de caldura", source="gsc",
+                              impressions=100, clicks=5, ctr=0.05, avg_position=10.0)],
+    ))
+    opp_id = discovered.data.items[0].id
+
+    ro_brief = await m.create_brief(ctx, CreateBriefParams(opportunity_id=opp_id, target_language="ro"))
+    ru_brief = await m.create_brief(ctx, CreateBriefParams(
+        opportunity_id=opp_id, target_language="ru", target_query="рекуператор тепла",
+    ))
+    assert ro_brief.status == "success"
+    assert ru_brief.status == "success"
+    # The reported bug: these fields were identical across languages.
+    assert ro_brief.data.target_audience != ru_brief.data.target_audience
+    assert ro_brief.data.cta_goal != ru_brief.data.cta_goal
+    assert ro_brief.data.outline != ru_brief.data.outline
+    assert ro_brief.data.target_audience == "Instalare profesionala HVAC"
+    assert ru_brief.data.target_audience == "Профессиональная установка HVAC"
+    assert ro_brief.data.cta_goal == "Sunati-ne"
+    assert ru_brief.data.cta_goal == "Позвоните нам"
 
 
 @pytest.mark.asyncio

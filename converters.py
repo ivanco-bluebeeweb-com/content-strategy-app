@@ -75,12 +75,25 @@ def decide_image_text_policy(
     return "no_text", ""
 
 
+def _stem(token: str) -> str:
+    """Trim a long token to an 8-char prefix so near-synonymous word forms
+    (e.g. ro 'recuperator' / 'recuperatoare', ru declensions) collapse to the
+    same cluster key. Cheap and deterministic -- not real morphological
+    stemming, but real enough to stop obvious variants of the same word
+    from splitting into separate clusters (see task #1894). Short tokens
+    (<=8 chars) are already specific enough and left untouched."""
+    return token[:8] if len(token) > 8 else token
+
+
 def cluster_label(query: str) -> str:
-    """Cheap heuristic clustering: strip stopwords/numbers, take the first
-    two significant tokens as a cluster key. Good enough for MVP grouping;
-    not a replacement for a real NLP clustering pass."""
+    """Cheap heuristic clustering: strip stopwords/numbers, stem the first
+    two significant tokens, and use them as a cluster key so query variants
+    of the same topic (different word endings, added connector words like
+    'de'/'of') collapse into ONE cluster instead of one per literal string.
+    Good enough for MVP grouping; not a replacement for a real NLP
+    clustering pass."""
     tokens = re.findall(r"[a-zA-Zа-яА-ЯёЁ]+", query.lower())
-    sig = [t for t in tokens if t not in _STOPWORDS and len(t) > 2]
+    sig = [_stem(t) for t in tokens if t not in _STOPWORDS and len(t) > 2]
     return " ".join(sig[:2]) if sig else query.lower()[:24]
 
 

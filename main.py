@@ -27,6 +27,7 @@ from schemas import (
     UpdateBriefTitleParams,
     CreateSiteProfileParams, DiscoverOpportunitiesParams,
     DiscoverOpportunitiesFromSearchConsoleParams, QuerySignal,
+    GenerateStrategicTopicsParams,
     GetContentCalendarParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams, UpdateSiteProfileParams,
@@ -70,6 +71,7 @@ from converters import (
     term_overlap_score as _term_overlap_score,
     find_cannibalization_pairs as _find_cannibalization_pairs,
     resolve_category as _resolve_category,
+    generate_strategic_candidates as _generate_strategic_candidates,
 )
 import time as _time
 
@@ -1574,6 +1576,148 @@ async def list_opportunities(ctx, params: ListOpportunitiesParams) -> ActionResu
     )
 
 
+@chat.function(
+    "generate_strategic_topics",
+    description=(
+        "Generate NEW content opportunities beyond any existing query signal, "
+        "by reasoning over the site's own declared content_categories, what's "
+        "already covered by existing opportunities/published content, and a "
+        "fixed library of funnel-stage (tofu/mofu/bofu) question patterns. "
+        "This is the deliberate second discovery engine -- discover_opportunities "
+        "only scores/clusters query signals the caller already fetched from GSC/ "
+        "SEO Audit, so it can never surface a topic nobody has searched for yet, "
+        "or fill a gap the site's own declared categories imply. Requires a "
+        "content audit (same gate as discover_opportunities) so it never proposes "
+        "a topic that duplicates existing content."
+    ),
+    action_type="write",
+    chain_callable=True,
+    effects=["create:opportunity", "create:queue_item"],
+    event="strategic_topics_generated",
+    data_model=OpportunityList,
+)
+async def generate_strategic_topics(ctx, params: GenerateStrategicTopicsParams) -> ActionResult:
+    """Reason beyond existing opportunities: turn the site's own declared
+    content_categories into new candidate topics, deliberately balanced
+    across tofu/mofu/bofu, skipping categories/terms already covered."""
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(
+            f"Site profile '{params.site_id}' not found. Create it first with create_site_profile.",
+            retryable=False,
+        )
+    profile = profile_page.data[0].data
+
+    # Same mandatory gate as discover_opportunities: never plan new content
+    # (even self-generated topics) blind to what already exists on the site.
+    audit_page = await ctx.store.query("content_audits", where={"site_id": params.site_id}, limit=1)
+    if not audit_page.data:
+        return ActionResult.error(
+            f"No content audit found for '{params.site_id}' yet. Run run_content_audit "
+            f"first -- generating strategic topics blind to the site's existing content "
+            f"risks duplicating or cannibalizing what's already published.",
+            retryable=False,
+        )
+
+    content_categories = profile.get("content_categories", [])
+    if not content_categories:
+        return ActionResult.error(
+            f"Site profile '{params.site_id}' has no content_categories declared. "
+            f"Set them via update_site_profile first -- this engine reasons from the "
+            f"site's own declared categories, it cannot invent what the business does.",
+            retryable=False,
+        )
+
+    language = params.language or (profile.get("target_languages") or ["ro"])[0]
+
+    # Build the covered-terms set from BOTH existing opportunities (any
+    # source) and already-published content (from the audit's existing
+    # content items) so a strategic topic never duplicates a query already
+    # tracked or an article already live.
+    covered_terms: set[str] = set()
+    existing_opps_page = await ctx.store.query("opportunities", where={"site_id": params.site_id}, limit=500)
+    for d in existing_opps_page.data:
+        for q in [d.data.get("primary_query", ""), d.data.get("query_cluster_label", "")] + d.data.get("supporting_queries", []):
+            covered_terms.update(t.lower() for t in q.split() if len(t) > 2)
+    existing_content_page = await ctx.store.query("existing_content_items", where={"site_id": params.site_id}, limit=500)
+    for d in existing_content_page.data:
+        covered_terms.update(t.lower() for t in d.data.get("top_terms", []))
+
+    candidates = _generate_strategic_candidates(
+        content_categories=content_categories,
+        covered_terms=covered_terms,
+        language=language,
+        per_category=max(1, min(params.per_category, 10)),
+    )
+    candidates = candidates[: max(1, min(params.limit, 100))]
+
+    if not candidates:
+        return ActionResult.success(
+            OpportunityList(items=[], total=0),
+            summary=(
+                f"No new strategic topics generated for '{params.site_id}' -- every "
+                f"declared content category already looks well-covered by existing "
+                f"opportunities/content."
+            ),
+        )
+
+    created = []
+    for cand in candidates:
+        doc = await ctx.store.create(
+            "opportunities",
+            {
+                "site_id": params.site_id,
+                "source": "strategic_gap_analysis",
+                "primary_query": cand["title"],
+                "supporting_queries": [],
+                "query_cluster_label": cluster_label(cand["title"]),
+                "intent": "commercial" if cand["funnel_stage"] == "bofu" else (
+                    "informational" if cand["funnel_stage"] == "tofu" else "commercial"
+                ),
+                "funnel_stage": cand["funnel_stage"],
+                "funnel_stage_reason": cand["funnel_stage_reason"],
+                "impressions": 0,
+                "clicks": 0,
+                "ctr": 0.0,
+                "avg_position": 0.0,
+                "business_relevance_score": 100.0,  # generated directly from the site's own declared categories
+                "seo_opportunity_score": 0.0,  # no query signal yet -- this is a proactive gap-fill, not a ranking-driven pick
+                "total_priority_score": 50.0,  # neutral mid-priority: real but unproven demand, scheduled deliberately rather than reactively
+                "recommended_content_type": "article",
+                "recommended_target_url": "",
+                "strategic_rationale": cand["strategic_rationale"],
+                "status": "idea",
+            },
+        )
+        await ctx.store.create(
+            "queue_items",
+            {
+                "site_id": params.site_id,
+                "brief_id": "",
+                "opportunity_id": doc.id,
+                "content_type": "article",
+                "lifecycle_status": "idea",
+                "assigned_agent": "Webbee",
+                "published_url": "",
+                "primary_query": cand["title"],
+            },
+        )
+        created.append(_to_opportunity(await ctx.store.get("opportunities", doc.id)))
+
+    stage_counts = {"tofu": 0, "mofu": 0, "bofu": 0}
+    for c in candidates:
+        stage_counts[c["funnel_stage"]] = stage_counts.get(c["funnel_stage"], 0) + 1
+
+    return ActionResult.success(
+        OpportunityList(items=created, total=len(created)),
+        summary=(
+            f"{len(created)} new strategic topic(s) generated for '{params.site_id}' "
+            f"beyond existing signals (tofu={stage_counts['tofu']}, "
+            f"mofu={stage_counts['mofu']}, bofu={stage_counts['bofu']})."
+        ),
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Brief generation
 # ──────────────────────────────────────────────────────────────────────────
@@ -1897,6 +2041,7 @@ async def create_brief(ctx, params: CreateBriefParams) -> ActionResult:
                 or profile.get("business_description", "")
             ),
             "search_intent": opp.get("intent", "informational"),
+            "funnel_stage": opp.get("funnel_stage", ""),
             "primary_query": opp.get("primary_query", ""),
             "secondary_queries": opp.get("supporting_queries", []),
             "outline": outline,

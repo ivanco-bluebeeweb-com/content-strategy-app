@@ -2,7 +2,7 @@
   "manifest_schema_version": 3,
   "sdk_version": "5.9.19",
   "app_id": "content-strategy-app",
-  "version": "0.7.1",
+  "version": "0.7.0",
   "name": "Content Strategy",
   "description": "Plans what to write next for your sites. Discovers content opportunities from Google Search Console data, clusters them into topics, generates structured article briefs (with image requirements for downstream generation), and tracks each idea through an editorial queue from idea to published.",
   "icon": "icon.svg",
@@ -4044,7 +4044,7 @@
       "return_schema": {
         "$defs": {
           "Opportunity": {
-            "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual.",
+            "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
             "properties": {
               "id": {
                 "anyOf": [
@@ -4140,6 +4140,16 @@
                 "title": "Intent",
                 "type": "string"
               },
+              "funnel_stage": {
+                "default": "",
+                "title": "Funnel Stage",
+                "type": "string"
+              },
+              "funnel_stage_reason": {
+                "default": "",
+                "title": "Funnel Stage Reason",
+                "type": "string"
+              },
               "impressions": {
                 "default": 0,
                 "title": "Impressions",
@@ -4183,6 +4193,11 @@
               "recommended_target_url": {
                 "default": "",
                 "title": "Recommended Target Url",
+                "type": "string"
+              },
+              "strategic_rationale": {
+                "default": "",
+                "title": "Strategic Rationale",
                 "type": "string"
               }
             },
@@ -4280,7 +4295,7 @@
       "return_schema": {
         "$defs": {
           "Opportunity": {
-            "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual.",
+            "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
             "properties": {
               "id": {
                 "anyOf": [
@@ -4376,6 +4391,16 @@
                 "title": "Intent",
                 "type": "string"
               },
+              "funnel_stage": {
+                "default": "",
+                "title": "Funnel Stage",
+                "type": "string"
+              },
+              "funnel_stage_reason": {
+                "default": "",
+                "title": "Funnel Stage Reason",
+                "type": "string"
+              },
               "impressions": {
                 "default": 0,
                 "title": "Impressions",
@@ -4419,6 +4444,11 @@
               "recommended_target_url": {
                 "default": "",
                 "title": "Recommended Target Url",
+                "type": "string"
+              },
+              "strategic_rationale": {
+                "default": "",
+                "title": "Strategic Rationale",
                 "type": "string"
               }
             },
@@ -4516,7 +4546,7 @@
       "return_schema": {
         "$defs": {
           "Opportunity": {
-            "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual.",
+            "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
             "properties": {
               "id": {
                 "anyOf": [
@@ -4612,6 +4642,16 @@
                 "title": "Intent",
                 "type": "string"
               },
+              "funnel_stage": {
+                "default": "",
+                "title": "Funnel Stage",
+                "type": "string"
+              },
+              "funnel_stage_reason": {
+                "default": "",
+                "title": "Funnel Stage Reason",
+                "type": "string"
+              },
               "impressions": {
                 "default": 0,
                 "title": "Impressions",
@@ -4655,6 +4695,11 @@
               "recommended_target_url": {
                 "default": "",
                 "title": "Recommended Target Url",
+                "type": "string"
+              },
+              "strategic_rationale": {
+                "default": "",
+                "title": "Strategic Rationale",
                 "type": "string"
               }
             },
@@ -4713,6 +4758,269 @@
         "x-sdl": "entity-list"
       },
       "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "generate_strategic_topics",
+      "description": "Generate NEW content opportunities beyond any existing query signal, by reasoning over the site's own declared content_categories, what's already covered by existing opportunities/published content, and a fixed library of funnel-stage (tofu/mofu/bofu) question patterns. This is the deliberate second discovery engine -- discover_opportunities only scores/clusters query signals the caller already fetched from GSC/ SEO Audit, so it can never surface a topic nobody has searched for yet, or fill a gap the site's own declared categories imply. Requires a content audit (same gate as discover_opportunities) so it never proposes a topic that duplicates existing content.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:opportunity",
+        "create:queue_item"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Params for the 'beyond existing opportunities' strategic topic engine.\n\nUnlike discover_opportunities (which only scores/clusters query signals\nthe caller already fetched from GSC/SEO Audit), this reasons from the\nsite's OWN declared content_categories and produces genuinely NEW\ncandidate topics that no query signal has surfaced yet -- covering\ntofu/mofu/bofu funnel stages deliberately rather than by accident.",
+        "properties": {
+          "site_id": {
+            "description": "Site id from list_site_profiles — never invent it",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "language": {
+            "default": "",
+            "description": "Language code to generate topic titles in (e.g. 'ro', 'ru'). Empty = site profile's first target language.",
+            "title": "Language",
+            "type": "string"
+          },
+          "per_category": {
+            "default": 3,
+            "description": "How many new candidate topics to generate per uncovered content category (1-10)",
+            "title": "Per Category",
+            "type": "integer"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Max strategic opportunities to create this round (1-100)",
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "GenerateStrategicTopicsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "Opportunity": {
+            "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "title": "Id"
+              },
+              "title": {
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "default": "idea",
+                "title": "Status",
+                "type": "string"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "site_id": {
+                "default": "",
+                "title": "Site Id",
+                "type": "string"
+              },
+              "source": {
+                "default": "",
+                "title": "Source",
+                "type": "string"
+              },
+              "primary_query": {
+                "default": "",
+                "title": "Primary Query",
+                "type": "string"
+              },
+              "supporting_queries": {
+                "default": [],
+                "items": {
+                  "type": "string"
+                },
+                "title": "Supporting Queries",
+                "type": "array"
+              },
+              "query_cluster_label": {
+                "default": "",
+                "title": "Query Cluster Label",
+                "type": "string"
+              },
+              "intent": {
+                "default": "",
+                "title": "Intent",
+                "type": "string"
+              },
+              "funnel_stage": {
+                "default": "",
+                "title": "Funnel Stage",
+                "type": "string"
+              },
+              "funnel_stage_reason": {
+                "default": "",
+                "title": "Funnel Stage Reason",
+                "type": "string"
+              },
+              "impressions": {
+                "default": 0,
+                "title": "Impressions",
+                "type": "integer"
+              },
+              "clicks": {
+                "default": 0,
+                "title": "Clicks",
+                "type": "integer"
+              },
+              "ctr": {
+                "default": 0.0,
+                "title": "Ctr",
+                "type": "number"
+              },
+              "avg_position": {
+                "default": 0.0,
+                "title": "Avg Position",
+                "type": "number"
+              },
+              "business_relevance_score": {
+                "default": 0.0,
+                "title": "Business Relevance Score",
+                "type": "number"
+              },
+              "seo_opportunity_score": {
+                "default": 0.0,
+                "title": "Seo Opportunity Score",
+                "type": "number"
+              },
+              "total_priority_score": {
+                "default": 0.0,
+                "title": "Total Priority Score",
+                "type": "number"
+              },
+              "recommended_content_type": {
+                "default": "",
+                "title": "Recommended Content Type",
+                "type": "string"
+              },
+              "recommended_target_url": {
+                "default": "",
+                "title": "Recommended Target Url",
+                "type": "string"
+              },
+              "strategic_rationale": {
+                "default": "",
+                "title": "Strategic Rationale",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title"
+            ],
+            "title": "Opportunity",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/$defs/Opportunity"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Total"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "OpportunityList",
+        "type": "object",
+        "x-sdl": "entity-list"
+      },
+      "event": "strategic_topics_generated",
       "background": false,
       "long_running": false,
       "scopes": [],
@@ -4897,6 +5205,11 @@
           "search_intent": {
             "default": "",
             "title": "Search Intent",
+            "type": "string"
+          },
+          "funnel_stage": {
+            "default": "",
+            "title": "Funnel Stage",
             "type": "string"
           },
           "primary_query": {
@@ -5853,6 +6166,11 @@
             "title": "Search Intent",
             "type": "string"
           },
+          "funnel_stage": {
+            "default": "",
+            "title": "Funnel Stage",
+            "type": "string"
+          },
           "primary_query": {
             "default": "",
             "title": "Primary Query",
@@ -6014,9 +6332,9 @@
     },
     {
       "name": "update_brief_title",
-      "description": "Fix an existing brief's working_title in place -- for the known bug where a brief created for a SECOND language of the same opportunity kept the FIRST language's title (e.g. a Romanian brief still titled in Russian) because the opportunity's own stored query text was reused as-is. Pass the real, correctly-translated title for this brief's own target_language -- never invent a translation.",
+      "description": "Fix an existing brief's working_title in place — for the known bug where a brief created for a SECOND language of the same opportunity kept the FIRST language's title (e.g. a Romanian brief still titled in Russian) because the opportunity's own stored query text was reused as-is. Pass the real, correctly-translated title for this brief's own target_language — never invent a translation.",
       "action_type": "write",
-      "chain_callable": false,
+      "chain_callable": true,
       "effects": [
         "update:article_brief"
       ],
@@ -6179,6 +6497,11 @@
           "search_intent": {
             "default": "",
             "title": "Search Intent",
+            "type": "string"
+          },
+          "funnel_stage": {
+            "default": "",
+            "title": "Funnel Stage",
             "type": "string"
           },
           "primary_query": {
@@ -6484,13 +6807,11 @@
           },
           "visual_subject": {
             "default": "",
-            "description": "What's physically in the shot + action -- derived from primary_query+resolved_category, never invented; \"\" only if both are somehow blank",
             "title": "Visual Subject",
             "type": "string"
           },
           "visual_environment": {
             "default": "",
-            "description": "Scene/setting -- from the approved Visual Profile's own visual_intent when set; \"\" is honest (no visual_intent on file) and Media Studio's own generic fallback still guarantees the final prompt is never blank there",
             "title": "Visual Environment",
             "type": "string"
           },
@@ -7006,6 +7327,11 @@
               "search_intent": {
                 "default": "",
                 "title": "Search Intent",
+                "type": "string"
+              },
+              "funnel_stage": {
+                "default": "",
+                "title": "Funnel Stage",
                 "type": "string"
               },
               "primary_query": {
@@ -8068,8 +8394,12 @@
         "properties": {
           "id": {
             "anyOf": [
-              {"type": "string"},
-              {"type": "integer"}
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
             ],
             "title": "Id"
           },
@@ -8077,26 +8407,55 @@
             "title": "Title",
             "type": "string"
           },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
           "description": {
             "anyOf": [
-              {"type": "string"},
-              {"type": "null"}
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
             "default": null,
             "title": "Description"
           },
           "status": {
             "anyOf": [
-              {"type": "string"},
-              {"type": "null"}
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
             "default": null,
             "title": "Status"
           },
           "url": {
             "anyOf": [
-              {"type": "string"},
-              {"type": "null"}
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
             "default": null,
             "title": "Url"
@@ -8152,7 +8511,9 @@
             "type": "integer"
           },
           "kept_site_ids": {
-            "items": {"type": "string"},
+            "items": {
+              "type": "string"
+            },
             "title": "Kept Site Ids",
             "type": "array"
           }
@@ -8334,7 +8695,7 @@
     }
   ],
   "required_scopes": [],
-  "icon_size_bytes": 290,
+  "icon_size_bytes": 2815,
   "exposed": [
     {
       "name": "register_project",

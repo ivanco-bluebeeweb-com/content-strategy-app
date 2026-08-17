@@ -240,6 +240,20 @@ class DiscoverOpportunitiesFromSearchConsoleParams(BaseModel):
     limit: int = Field(20, description="Max Search Console query rows to fetch and turn into opportunities (1-100)")
 
 
+class GenerateStrategicTopicsParams(BaseModel):
+    """Params for the 'beyond existing opportunities' strategic topic engine.
+
+    Unlike discover_opportunities (which only scores/clusters query signals
+    the caller already fetched from GSC/SEO Audit), this reasons from the
+    site's OWN declared content_categories and produces genuinely NEW
+    candidate topics that no query signal has surfaced yet -- covering
+    tofu/mofu/bofu funnel stages deliberately rather than by accident."""
+    site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+    language: str = Field("", description="Language code to generate topic titles in (e.g. 'ro', 'ru'). Empty = site profile's first target language.")
+    per_category: int = Field(3, description="How many new candidate topics to generate per uncovered content category (1-10)")
+    limit: int = Field(20, description="Max strategic opportunities to create this round (1-100)")
+
+
 class ListOpportunitiesParams(BaseModel):
     site_id: str = Field("", description="Optional site filter. Empty = all sites.")
     status: str = Field("", description="Optional lifecycle status filter, e.g. 'idea', 'approved'.")

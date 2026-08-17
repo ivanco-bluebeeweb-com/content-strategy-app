@@ -2497,3 +2497,161 @@ async def test_purge_pipeline_data_removes_outreach_targets():
     result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
     assert result.status == "success"
     assert result.data.outreach_targets_removed >= 1
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Funnel-stage classification (converters.guess_funnel_stage)
+# ──────────────────────────────────────────────────────────────────────────
+
+def test_guess_funnel_stage_bofu_signals():
+    from converters import guess_funnel_stage
+    stage, reason = guess_funnel_stage("кондиционер с гарантией установка цена заказать")
+    assert stage == "bofu"
+    assert reason  # auditable, never silent
+
+    stage_ro, _ = guess_funnel_stage("cea mai bună firmă instalare climatizare chișinău recenzii")
+    assert stage_ro == "bofu"
+
+
+def test_guess_funnel_stage_mofu_signals():
+    from converters import guess_funnel_stage
+    stage, reason = guess_funnel_stage("cum să alegi un aparat de aer condiționat")
+    assert stage == "mofu"
+    assert reason
+
+
+def test_guess_funnel_stage_defaults_to_tofu():
+    from converters import guess_funnel_stage
+    stage, reason = guess_funnel_stage("what is a security guard service")
+    assert stage == "tofu"
+    assert "awareness" in reason.lower()
+
+
+@pytest.mark.asyncio
+async def test_discover_opportunities_sets_funnel_stage_on_created_opportunities():
+    """discover_opportunities must classify funnel_stage on every created
+    opportunity, not leave it blank -- it's a first-class field now, not an
+    afterthought computed only by the strategic engine."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    result = await m.discover_opportunities(
+        ctx,
+        DiscoverOpportunitiesParams(
+            site_id="g4s.md",
+            queries=[
+                QuerySignal(query="security guard price quote guarantee", source="gsc",
+                            impressions=300, clicks=5, ctr=0.02, avg_position=9.0),
+            ],
+        ),
+    )
+    assert result.status == "success"
+    assert result.data.items[0].funnel_stage in ("tofu", "mofu", "bofu")
+    assert result.data.items[0].funnel_stage_reason
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Strategic topic generation -- the "beyond existing opportunities" engine
+# ──────────────────────────────────────────────────────────────────────────
+
+def test_generate_strategic_candidates_covers_new_categories_with_balanced_funnel():
+    from converters import generate_strategic_candidates
+    candidates = generate_strategic_candidates(
+        content_categories=["climatizare birou", "instalare aer conditionat"],
+        covered_terms=set(),
+        language="ro",
+        per_category=3,
+    )
+    assert len(candidates) == 6  # 2 categories x 3 each
+    stages = {c["funnel_stage"] for c in candidates}
+    assert stages == {"tofu", "mofu", "bofu"}  # balanced spread, not all one stage
+    for c in candidates:
+        assert c["title"]
+        assert c["strategic_rationale"]
+        assert c["funnel_stage_reason"]
+
+
+def test_generate_strategic_candidates_skips_already_covered_category():
+    from converters import generate_strategic_candidates
+    # covered_terms heavily overlaps this category's own vocabulary -> skip it
+    candidates = generate_strategic_candidates(
+        content_categories=["climatizare birou"],
+        covered_terms={"climatizare", "birou"},
+        language="ro",
+        per_category=3,
+    )
+    assert candidates == []
+
+
+@pytest.mark.asyncio
+async def test_generate_strategic_topics_requires_content_audit():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md", content_categories=["climatizare birou"],
+    ))
+    from schemas import GenerateStrategicTopicsParams
+    result = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(site_id="g4s.md"))
+    assert result.status == "error"
+    assert "run_content_audit" in result.error
+
+
+@pytest.mark.asyncio
+async def test_generate_strategic_topics_requires_declared_categories():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
+    await _seed_audit(ctx, "g4s.md")
+    from schemas import GenerateStrategicTopicsParams
+    result = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(site_id="g4s.md"))
+    assert result.status == "error"
+    assert "content_categories" in result.error
+
+
+@pytest.mark.asyncio
+async def test_generate_strategic_topics_creates_opportunities_and_queue_items_beyond_existing():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md",
+        content_categories=["climatizare birou", "instalare aer conditionat"],
+        target_languages=["ro"],
+    ))
+    await _seed_audit(ctx, "g4s.md")
+
+    from schemas import GenerateStrategicTopicsParams
+    result = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(
+        site_id="g4s.md", per_category=2,
+    ))
+    assert result.status == "success"
+    assert result.data.total == 4  # 2 categories x 2 each
+    for opp in result.data.items:
+        assert opp.source == "strategic_gap_analysis"
+        assert opp.funnel_stage in ("tofu", "mofu", "bofu")
+        assert opp.strategic_rationale
+
+    # each new opportunity also has a matching queue item in 'idea' status
+    from schemas import ListQueueParams
+    queue = await m.list_queue(ctx, ListQueueParams(site_id="g4s.md"))
+    assert queue.data.total == 4
+    assert all(q.lifecycle_status == "idea" for q in queue.data.items)
+
+
+@pytest.mark.asyncio
+async def test_generate_strategic_topics_does_not_duplicate_existing_opportunity_categories():
+    """A category already heavily represented among existing opportunities
+    should not get new near-duplicate strategic topics piled on top."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md",
+        content_categories=["climatizare birou"],
+        target_languages=["ro"],
+    ))
+    await _seed_audit(ctx, "g4s.md")
+    await m.discover_opportunities(ctx, DiscoverOpportunitiesParams(
+        site_id="g4s.md",
+        queries=[QuerySignal(query="climatizare birou pret", source="gsc",
+                              impressions=100, clicks=5, ctr=0.05, avg_position=6.0)],
+    ))
+
+    from schemas import GenerateStrategicTopicsParams
+    result = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(site_id="g4s.md"))
+    assert result.status == "success"
+    assert result.data.total == 0

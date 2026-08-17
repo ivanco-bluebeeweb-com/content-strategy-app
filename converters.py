@@ -48,13 +48,16 @@ def guess_intent(query: str) -> str:
 
 _BOFU_HINTS = (
     # ready-to-buy: guarantees, ordering, quotes, reviews of who to hire,
-    # explicit "best company" comparisons aimed at a purchase decision
-    "guarantee", "warranty", "order", "buy now", "quote", "review", "reviews",
-    "best company", "hire",
+    # explicit "best company" comparisons aimed at a purchase decision, or
+    # a direct "buy"/"where to buy" signal -- the clearest ready-to-purchase
+    # intent there is, stronger even than "guarantee"/"order" language.
+    "guarantee", "warranty", "order", "buy", "buy now", "purchase", "quote",
+    "review", "reviews", "best company", "hire", "where to buy",
     "гарантия", "гарантией", "заказать", "заявка", "отзывы", "лучшая компания",
-    "рассчитать стоимость", "калькулятор",
+    "рассчитать стоимость", "калькулятор", "купить", "где купить",
     "garanție", "garantie", "comandă", "comanda", "recenzii", "cea mai bună",
-    "calculator", "deviz",
+    "calculator", "deviz", "oferta", "ofertă", "cumpăr", "cumpara", "cumpără",
+    "unde cumpăr", "unde cumpar",
 )
 _MOFU_HINTS = (
     "price", "cost", "compare", "comparison", "vs", "how to choose",

@@ -2635,6 +2635,34 @@ async def test_generate_strategic_topics_creates_opportunities_and_queue_items_b
 
 
 @pytest.mark.asyncio
+async def test_generate_strategic_topics_allows_second_language_pass():
+    """A category must NOT look 'covered' just because a PRIOR strategic_gap_analysis
+    pass already generated a topic for it in another language -- that would
+    permanently block generating the SAME category's BOFU topic in a second
+    target_language, defeating the documented one-brief-per-language design."""
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id="g4s.md", domain="g4s.md",
+        content_categories=["ventilatie"],
+        target_languages=["ro", "ru"],
+    ))
+    await _seed_audit(ctx, "g4s.md")
+
+    from schemas import GenerateStrategicTopicsParams
+    first = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(
+        site_id="g4s.md", language="ro", per_category=1, funnel_focus="bofu",
+    ))
+    assert first.status == "success"
+    assert first.data.total == 1
+
+    second = await m.generate_strategic_topics(ctx, GenerateStrategicTopicsParams(
+        site_id="g4s.md", language="ru", per_category=1, funnel_focus="bofu",
+    ))
+    assert second.status == "success"
+    assert second.data.total == 1  # must NOT be blocked by the ro pass's own output
+
+
+@pytest.mark.asyncio
 async def test_generate_strategic_topics_does_not_duplicate_existing_opportunity_categories():
     """A category already heavily represented among existing opportunities
     should not get new near-duplicate strategic topics piled on top."""

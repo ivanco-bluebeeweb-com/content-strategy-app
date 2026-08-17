@@ -1640,13 +1640,21 @@ async def generate_strategic_topics(ctx, params: GenerateStrategicTopicsParams) 
     lang_key_for_categories = language.lower()[:2]
     localized_categories = categories_i18n.get(lang_key_for_categories) or content_categories
 
-    # Build the covered-terms set from BOTH existing opportunities (any
-    # source) and already-published content (from the audit's existing
-    # content items) so a strategic topic never duplicates a query already
-    # tracked or an article already live.
+    # Build the covered-terms set from REAL demand signals only: existing
+    # gsc/seo_audit-sourced opportunities and already-published content (from
+    # the audit's existing content items). Deliberately EXCLUDES this
+    # engine's own previously-generated 'strategic_gap_analysis' opportunities
+    # -- their title trivially embeds the category name itself, so including
+    # them would make a category look "covered" forever after its first
+    # generation pass, permanently blocking a legitimate second pass for a
+    # DIFFERENT target_language (this app explicitly supports one brief per
+    # language per opportunity elsewhere -- the same per-language topic
+    # generation must not be blocked by the engine's own prior output).
     covered_terms: set[str] = set()
     existing_opps_page = await ctx.store.query("opportunities", where={"site_id": params.site_id}, limit=500)
     for d in existing_opps_page.data:
+        if d.data.get("source") == "strategic_gap_analysis":
+            continue
         for q in [d.data.get("primary_query", ""), d.data.get("query_cluster_label", "")] + d.data.get("supporting_queries", []):
             covered_terms.update(t.lower() for t in q.split() if len(t) > 2)
     existing_content_page = await ctx.store.query("existing_content_items", where={"site_id": params.site_id}, limit=500)

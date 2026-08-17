@@ -230,6 +230,17 @@
             "title": "Content Categories",
             "type": "array"
           },
+          "content_categories_i18n": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "Content Categories I18N",
+            "type": "object"
+          },
           "cta_default": {
             "default": "",
             "title": "Cta Default",
@@ -370,6 +381,25 @@
             "default": null,
             "description": "Replace content categories/topics; omit to keep",
             "title": "Content Categories"
+          },
+          "content_categories_i18n": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Replace per-language content_categories overrides, e.g. {'ru': [...], 'ro': [...]}; omit to keep. Prevents generate_strategic_topics from splicing untranslated category text into another language's titles.",
+            "title": "Content Categories I18N"
           },
           "cta_default": {
             "anyOf": [
@@ -568,6 +598,17 @@
             "title": "Content Categories",
             "type": "array"
           },
+          "content_categories_i18n": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "default": {},
+            "title": "Content Categories I18N",
+            "type": "object"
+          },
           "cta_default": {
             "default": "",
             "title": "Cta Default",
@@ -753,6 +794,17 @@
                 },
                 "title": "Content Categories",
                 "type": "array"
+              },
+              "content_categories_i18n": {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "default": {},
+                "title": "Content Categories I18N",
+                "type": "object"
               },
               "cta_default": {
                 "default": "",

@@ -1607,43 +1607,49 @@ async def test_brief_panel_shows_project_briefs_catalog_when_site_id_given_witho
 
 
 @pytest.mark.asyncio
-async def test_brief_panel_project_view_has_three_tabs_defaulting_to_briefs():
-    """Project detail (site_id given, no queue_item_id) must render the
-    Content Strategy / Content Plan / Content Briefs tab switcher, with
-    'briefs' as the default active tab so every existing caller that opens
-    __panel__brief with just site_id (no tab=) keeps seeing the briefs
-    catalogue exactly as before this feature existed."""
+async def test_brief_panel_project_view_has_three_tabs_defaulting_to_overview():
+    """Project detail (site_id given, no queue_item_id) must render a real
+    ui.Tabs switcher -- Overview / Content Plan / Content Briefs, in that
+    order -- with 'Overview' (index 0) open by default. Each tab's content
+    is a ui.Accordion of collapsible sections, not a flat stack."""
     ctx = MockContext()
     await m.create_site_profile(ctx, CreateSiteProfileParams(
         site_id="g4s.md", domain="g4s.md", brand_name="G4S Moldova",
     ))
     await _seed_audit(ctx, "g4s.md")
 
-    default_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md"))
-    assert "Content Strategy" in default_rendered
-    assert "Content Plan" in default_rendered
-    assert "Content Briefs" in default_rendered
-    # Default tab content is still the briefs catalogue.
-    assert "Briefs (0)" in default_rendered
-    assert "Create new brief" in default_rendered
-    # The active tab's own button renders 'primary'; the others 'ghost'.
-    assert "'function': '__panel__brief', 'params': {'site_id': 'g4s.md', 'tab': 'briefs'" in default_rendered
+    rendered = repr(await m.brief_panel(ctx, site_id="g4s.md"))
+    assert "type='Tabs'" in rendered
+    assert "type='Accordion'" in rendered
+    # Real ui.Tabs: all three tabs' content is present in one render
+    # (client-side switch), labelled in the required order, Overview first.
+    assert "'label': 'Overview'" in rendered
+    assert "'label': 'Content Plan'" in rendered
+    assert "'label': 'Content Briefs'" in rendered
+    assert rendered.index("'label': 'Overview'") < rendered.index("'label': 'Content Plan'") < rendered.index("'label': 'Content Briefs'")
+    assert "'default_tab': 0" in rendered
 
-    strategy_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="strategy"))
-    assert "Content audit" in strategy_rendered
-    assert "Content decay" in strategy_rendered
-    assert "Tracked competitors" in strategy_rendered
-    assert "Named authors" in strategy_rendered
-    assert "'function': '__panel__brief', 'params': {'site_id': 'g4s.md', 'tab': 'strategy'" in strategy_rendered
+    # Overview tab content (accordion sections).
+    assert "Content audit" in rendered
+    assert "Content decay" in rendered
+    assert "Tracked competitors" in rendered
+    assert "Named authors" in rendered
 
-    plan_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="plan"))
-    assert "Publication calendar" in plan_rendered
-    assert "Build a monthly calendar" in plan_rendered
-    assert "Unscheduled backlog" in plan_rendered
-    assert "build_content_calendar" in plan_rendered
+    # Content Plan tab content.
+    assert "Publication calendar" in rendered
+    assert "Build a monthly calendar" in rendered
+    assert "Unscheduled backlog" in rendered
+    assert "build_content_calendar" in rendered
 
-    briefs_rendered = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="briefs"))
-    assert "Briefs (0)" in briefs_rendered
+    # Content Briefs tab content -- unchanged catalogue, now inside an
+    # Accordion section instead of a bare Header.
+    assert "Briefs (0)" in rendered
+    assert "Create new brief" in rendered
+
+    # tab= is still accepted to pick a different initial open tab (e.g. a
+    # deep link from the brief detail page's Back button).
+    briefs_first = repr(await m.brief_panel(ctx, site_id="g4s.md", tab="briefs"))
+    assert "'default_tab': 2" in briefs_first
 
 
 @pytest.mark.asyncio

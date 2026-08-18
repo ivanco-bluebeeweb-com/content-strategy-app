@@ -56,8 +56,8 @@ _BOFU_HINTS = (
     "гарантия", "гарантией", "заказать", "заявка", "отзывы", "лучшая компания",
     "рассчитать стоимость", "калькулятор", "купить", "где купить",
     "garanție", "garantie", "comandă", "comanda", "recenzii", "pareri", "păreri",
-    "cea mai bună", "calculator", "deviz", "oferta", "ofertă", "cumpăr",
-    "cumpara", "cumpără", "unde cumpăr", "unde cumpar",
+    "cea mai bună", "cel mai bun", "calculator", "deviz", "oferta", "ofertă",
+    "cumpăr", "cumpara", "cumpără", "unde cumpăr", "unde cumpar",
 )
 _MOFU_HINTS = (
     "price", "cost", "compare", "comparison", "vs", "how to choose",

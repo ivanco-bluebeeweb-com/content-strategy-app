@@ -212,3 +212,48 @@ async def test_adversarial_purge_site_pipeline_data_idempotent_on_empty_site():
     again = await m.purge_site_pipeline_data(
         ctx, PurgeSitePipelineDataParams(site_id="site-empty"))
     assert again.error is None
+
+
+# ── Part D2 (SCENARIO_TESTING_STANDARD.md): idempotency / double-invocation ─
+
+@pytest.mark.asyncio
+async def test_d2_double_purge_pipeline_data_portfolio_wide_is_idempotent():
+    """purge_pipeline_data (portfolio-wide, not per-site) must be safe to
+    call twice in a row -- the second call finds every collection already
+    empty and must return clean zero counts, not error."""
+    from schemas import PurgePipelineDataParams
+    ctx = MockContext()
+    await _make_site(ctx, "site-1")
+    await ctx.store.create("opportunities", {"site_id": "site-1", "query": "q1"})
+
+    first = await m.purge_pipeline_data(ctx, PurgePipelineDataParams())
+    assert first.error is None
+    assert first.data.opportunities_removed == 1
+
+    second = await m.purge_pipeline_data(ctx, PurgePipelineDataParams())
+    assert second.error is None
+    assert second.data.opportunities_removed == 0
+
+
+# ── Part D3 (SCENARIO_TESTING_STANDARD.md): security / SSRF surface -------
+
+@pytest.mark.asyncio
+async def test_d3_no_ssrf_add_site_competitor_url_is_stored_not_fetched():
+    """add_site_competitor accepts a `url` field (competitor website), but
+    this app's own code never fetches it -- grep across main.py confirms no
+    ctx.http/httpx/requests/urlopen call exists anywhere. Actual web reading
+    happens at chat level via Webbee's own web_search/read_url, never as an
+    IPC call this backend makes with a user-supplied address. Feeding an
+    adversarial internal/metadata URL must simply be stored as opaque data,
+    never resolved -- this is the regression trip-wire for a future feature
+    that WOULD fetch it."""
+    from schemas import AddSiteCompetitorParams
+    ctx = MockContext()
+    await _make_site(ctx, "site-1")
+
+    adversarial_url = "http://169.254.169.254/latest/meta-data/"
+    result = await m.add_site_competitor(ctx, AddSiteCompetitorParams(
+        site_id="site-1", name="Suspicious Co", url=adversarial_url,
+    ))
+    assert result.error is None
+    assert result.data.url == adversarial_url

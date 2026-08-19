@@ -2160,7 +2160,7 @@ async def test_purge_pipeline_data_removes_content_authors():
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
     await m.create_content_author(ctx, CreateContentAuthorParams(site_id="g4s.md", name="A"))
     from schemas import PurgePipelineDataParams
-    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams())
     assert result.status == "success"
     assert result.data.authors_removed == 1
 
@@ -2260,7 +2260,7 @@ async def test_purge_pipeline_data_removes_content_decay_records():
         signals=[ContentPerformanceSignal(url="https://g4s.md/blog/a", clicks=50, avg_position=8.0)],
     ))
     from schemas import PurgePipelineDataParams
-    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams())
     assert result.status == "success"
     assert result.data.decay_readings_removed == 2  # 1 reading + 1 report
 
@@ -2386,7 +2386,7 @@ async def test_purge_pipeline_data_removes_kpi_records():
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
     await m.record_kpi_snapshot(ctx, RecordKpiSnapshotParams(site_id="g4s.md", period_label="2026-07", ga4_sessions=100))
     from schemas import PurgePipelineDataParams
-    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams())
     assert result.status == "success"
     assert result.data.kpi_snapshots_removed >= 2  # 1 snapshot + 1 dashboard report
 
@@ -2494,7 +2494,7 @@ async def test_purge_pipeline_data_removes_outreach_targets():
     await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="g4s.md", domain="g4s.md"))
     await m.add_link_building_target(ctx, CreateOutreachTargetParams(site_id="g4s.md", target_domain="a.com"))
     from schemas import PurgePipelineDataParams
-    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams(confirm_wipe=True))
+    result = await m.purge_pipeline_data(ctx, PurgePipelineDataParams())
     assert result.status == "success"
     assert result.data.outreach_targets_removed >= 1
 

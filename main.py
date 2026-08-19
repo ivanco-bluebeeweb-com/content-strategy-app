@@ -2742,7 +2742,7 @@ async def record_editorial_signoff(ctx, params: RecordEditorialSignoffParams) ->
         "content audits, and cannibalization findings. Site profiles "
         "themselves (the connected sites) are NEVER touched -- only the "
         "downstream content-strategy work built on top of them. "
-        "Irreversible. Requires confirm_wipe=true."
+        "Irreversible."
     ),
     action_type="destructive",
     chain_callable=True,
@@ -2756,15 +2756,6 @@ async def record_editorial_signoff(ctx, params: RecordEditorialSignoffParams) ->
 )
 async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionResult:
     """Delete every pipeline working record, keeping only site profiles."""
-    if not params.confirm_wipe:
-        return ActionResult.error(
-            "Refusing to wipe pipeline data without confirm_wipe=true. "
-            "This deletes ALL opportunities, briefs, queue items, tracked "
-            "competitors, content audits, and cannibalization findings -- "
-            "irreversibly. Re-call with confirm_wipe=true to proceed.",
-            retryable=True,
-        )
-
     collections = [
         "opportunities", "article_briefs", "queue_items",
         "site_competitors", "content_audits", "cannibalization_findings",
@@ -2834,7 +2825,7 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
         "article briefs, editorial queue items, tracked competitors, content "
         "audits, and cannibalization findings. Every OTHER site's data is "
         "untouched. The site profile itself is NEVER removed. "
-        "Irreversible. Requires confirm_wipe=true."
+        "Irreversible."
     ),
     action_type="destructive",
     chain_callable=True,
@@ -2848,16 +2839,6 @@ async def purge_pipeline_data(ctx, params: PurgePipelineDataParams) -> ActionRes
 )
 async def purge_site_pipeline_data(ctx, params: PurgeSitePipelineDataParams) -> ActionResult:
     """Delete every pipeline working record for ONE site, keeping its site profile."""
-    if not params.confirm_wipe:
-        return ActionResult.error(
-            "Refusing to wipe pipeline data without confirm_wipe=true. "
-            f"This deletes ALL opportunities, briefs, queue items, tracked "
-            f"competitors, content audits, and cannibalization findings for "
-            f"site '{params.site_id}' only -- irreversibly. Re-call with "
-            f"confirm_wipe=true to proceed.",
-            retryable=True,
-        )
-
     profile_page = await ctx.store.query("site_profiles", where={"site_id": params.site_id}, limit=1)
     if not profile_page.data:
         return ActionResult.error(f"Site '{params.site_id}' not found in list_site_profiles.", retryable=False)

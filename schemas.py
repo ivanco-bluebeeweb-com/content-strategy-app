@@ -662,24 +662,15 @@ class GetContentDecayParams(BaseModel):
 
 
 class PurgePipelineDataParams(BaseModel):
-    confirm_wipe: bool = Field(
-        False,
-        description=(
-            "Must be explicitly true to run the purge. Safety flag so this can "
-            "never fire by accident from a misread instruction."
-        ),
-    )
+    """No fields: gated purely by action_type="destructive" (platform's own
+    KAV confirmation card). A manual confirm_wipe field here would
+    double-prompt and break the platform's "what you saw is what runs"
+    guarantee -- see POST_AUDIT_LOG_STANDARD.md at the Apps root."""
+    pass
 
 
 class PurgeSitePipelineDataParams(BaseModel):
     site_id: str = Field(description="Site id from list_site_profiles — never invent it. Only THIS site's pipeline data is removed; every other site's opportunities/briefs/queue/etc. are untouched.")
-    confirm_wipe: bool = Field(
-        False,
-        description=(
-            "Must be explicitly true to run the purge. Safety flag so this can "
-            "never fire by accident from a misread instruction."
-        ),
-    )
 
 
 class PurgeResult(sdl.Entity):

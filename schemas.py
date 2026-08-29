@@ -479,6 +479,22 @@ class ListConnectedSitesParams(BaseModel):
     limit: int = Field(50, description="Max items to return (1-100)")
 
 
+class GetInternalLinkingStatusParams(BaseModel):
+    site_id: str = Field(..., description="Site id/domain (site_profiles.site_id) to check Internal Linking Engine status for")
+
+
+class EnableInternalLinkingParams(BaseModel):
+    site_id: str = Field(..., description="Site id/domain (site_profiles.site_id) to turn Internal Linking Engine on for")
+    domain: str = Field("", description="Display name; defaults to site_id if left blank")
+
+
+class ILEStatusRecord(sdl.Entity):
+    """Internal Linking Engine status for one project, as read via inter-app IPC."""
+    site_id: str = ""
+    status: dict = Field(default_factory=dict)
+    error: str = ""
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Web-level competitor tracking (site-scoped — distinct from Brand Strategy
 # Hub's brand-scoped competitors; a site can rank against different SERP

@@ -28,7 +28,8 @@ from schemas import (
     CreateSiteProfileParams, DiscoverOpportunitiesParams,
     DiscoverOpportunitiesFromSearchConsoleParams, QuerySignal,
     GenerateStrategicTopicsParams,
-    GetContentCalendarParams, LinkExternalArticleParams,
+    EnableInternalLinkingParams, ILEStatusRecord,
+    GetContentCalendarParams, GetInternalLinkingStatusParams, LinkExternalArticleParams,
     ListBriefsParams, ListOpportunitiesParams, ListQueueParams,
     ListSiteProfilesParams, UpdateQueueStatusParams, UpdateSiteProfileParams,
     RecordEditorialSignoffParams,
@@ -147,6 +148,7 @@ async def expose_register_project(ctx, site_id: str = "", domain: str = "",
 # provider (Shopify, Webflow, a plain-domain connector, ...) is added here
 # and Quick Add picks it up automatically -- no panel code changes needed.
 SITE_PROVIDER_APP_IDS: list[str] = ["wordpress-hub"]
+ILE_APP_ID = "internal-linking-engine"
 
 # Marketplace display_name for each provider app_id -- shown under a
 # connected site's bare domain in Quick Add so it's clear WHERE that site
@@ -248,6 +250,19 @@ async def fetch_connected_sites(ctx) -> tuple[list[dict], list[dict]]:
                 "site_id": _canonical_site_id(r),
             })
     return sites, problems
+
+
+async def fetch_ile_status(ctx, site_id: str) -> tuple[dict, str]:
+    """Pull one site's Internal Linking Engine status via ctx.extensions.call
+    IPC (see expose.py in that app) -- direct in-process call, no chat
+    round-trip. Returns (status_dict, error_reason). error_reason is empty
+    on success; status_dict is {} if the call failed or the app is not
+    reachable (not installed for this user, or genuinely down)."""
+    try:
+        status = await ctx.extensions.call(ILE_APP_ID, "get_status", site_id=site_id)
+        return (status or {}), ""
+    except Exception as exc:  # noqa: BLE001 -- surfaced to the panel, not swallowed
+        return {}, f"{type(exc).__name__}: {exc}".strip()[:300]
 
 
 chat = ChatExtension(
@@ -2929,6 +2944,29 @@ async def _read_cached_connected_sites(ctx) -> tuple[list[dict], list[dict], boo
     return doc.data.get("sites", []), doc.data.get("problems", []), True
 
 
+async def _cache_ile_status(ctx, site_id: str, status: dict, error: str) -> None:
+    """Persist the last-known-good Internal Linking Engine status for one
+    project, same reasoning as _cache_connected_sites: a panel-render IPC
+    call is unreliable, so the panel reads this cache and a real call path
+    (the chat function below, or the schedule) keeps it warm."""
+    payload = {"site_id": site_id, "status": status, "error": error}
+    page = await ctx.store.query("ile_status_cache", where={"site_id": site_id}, limit=1)
+    if page.data:
+        await ctx.store.update("ile_status_cache", page.data[0].id, payload)
+    else:
+        await ctx.store.create("ile_status_cache", payload)
+
+
+async def _read_cached_ile_status(ctx, site_id: str) -> tuple[dict, str, bool]:
+    """Read one site's cached Internal Linking Engine status. Returns
+    (status, error, has_cache)."""
+    page = await ctx.store.query("ile_status_cache", where={"site_id": site_id}, limit=1)
+    if not page.data:
+        return {}, "", False
+    doc = page.data[0]
+    return doc.data.get("status", {}), doc.data.get("error", ""), True
+
+
 @chat.function(
     "list_connected_sites",
     description=(
@@ -3005,6 +3043,87 @@ async def csa_connected_sites_refresh(ctx) -> None:
     """
     sites, problems = await fetch_connected_sites(ctx)
     await _cache_connected_sites(ctx, sites, problems)
+
+
+@chat.function(
+    "get_internal_linking_status",
+    description=(
+        "Refresh and read one project's Internal Linking Engine status (enabled, mode, "
+        "index health, latest plan) via inter-app IPC, and cache it so the project's "
+        "'Internal Linking' tab can show it reliably. Call this after enabling/changing "
+        "settings there, or if the tab looks stale."
+    ),
+    action_type="read",
+    data_model=ILEStatusRecord,
+)
+async def get_internal_linking_status(ctx, params: GetInternalLinkingStatusParams) -> ActionResult:
+    """Pull one site's live Internal Linking Engine status and refresh the cache
+    the 'Internal Linking' project tab reads from."""
+    site_id = params.site_id
+    status, error = await fetch_ile_status(ctx, site_id)
+    await _cache_ile_status(ctx, site_id, status, error)
+    if error:
+        return ActionResult.success(
+            {"site_id": site_id, "status": status, "error": error},
+            summary=f"Could not reach Internal Linking Engine for '{site_id}': {error}",
+            refresh_panels=["brief"],
+        )
+    return ActionResult.success(
+        {"site_id": site_id, "status": status, "error": ""},
+        summary=(
+            f"Internal Linking Engine for '{site_id}': "
+            f"{'enabled' if status.get('enabled') else 'not enabled'}."
+        ),
+        refresh_panels=["brief"],
+    )
+
+
+@chat.function(
+    "enable_internal_linking",
+    description=(
+        "Turn on Internal Linking Engine for this project via inter-app IPC, then refresh "
+        "the 'Internal Linking' tab's status cache. No content is touched until a plan is "
+        "previewed and explicitly applied inside that app."
+    ),
+    action_type="write",
+    data_model=ILEStatusRecord,
+    effects=["csa.internal_linking_enabled"],
+    event="content-strategy-app.enable_internal_linking",
+)
+async def enable_internal_linking(ctx, params: EnableInternalLinkingParams) -> ActionResult:
+    """Enable Internal Linking Engine for one project by calling its expose_enable_site IPC surface."""
+    try:
+        result = await ctx.extensions.call(
+            ILE_APP_ID, "enable_site", site_id=params.site_id, domain=params.domain,
+        )
+    except Exception as exc:  # noqa: BLE001 -- surfaced to the panel, not swallowed
+        error = f"{type(exc).__name__}: {exc}".strip()[:300]
+        await _cache_ile_status(ctx, params.site_id, {}, error)
+        return ActionResult.error(
+            f"Could not reach Internal Linking Engine: {error}", retryable=True, code="ILE_UNREACHABLE",
+        )
+
+    status, error = await fetch_ile_status(ctx, params.site_id)
+    await _cache_ile_status(ctx, params.site_id, status, error)
+    return ActionResult.success(
+        result or {},
+        summary=f"Internal Linking Engine enabled for '{params.site_id}'.",
+        refresh_panels=["brief"],
+    )
+
+
+@ext.schedule("csa_ile_status_refresh", "20 * * * *")
+async def csa_ile_status_refresh(ctx) -> None:
+    """Keeps every project's Internal Linking Engine status cache warm, same
+    reasoning as csa_connected_sites_refresh -- a panel-render IPC call is
+    unreliable, so a real @ext.schedule tick refreshes it instead."""
+    page = await ctx.store.query("site_profiles", limit=500)
+    for doc in page.data:
+        site_id = doc.data.get("site_id", "")
+        if not site_id:
+            continue
+        status, error = await fetch_ile_status(ctx, site_id)
+        await _cache_ile_status(ctx, site_id, status, error)
 
 
 _STATUS_COLOR = {
@@ -3248,6 +3367,7 @@ _PROJECT_TAB_ORDER = [
     ("strategy", "Overview"),
     ("plan", "Content Plan"),
     ("briefs", "Content Briefs"),
+    ("linking", "Internal Linking"),
 ]
 
 
@@ -3461,7 +3581,11 @@ async def _project_tabs_view(ctx, site_id: str, show_create_brief: str, tab: str
     strategy_content = await _content_strategy_tab_view(ctx, site_id, profile)
     plan_content = await _content_plan_tab_view(ctx, site_id)
     briefs_content = await _briefs_catalog_view(ctx, site_id, show_create_brief)
-    content_by_key = {"strategy": strategy_content, "plan": plan_content, "briefs": briefs_content}
+    linking_content = await _content_linking_tab_view(ctx, site_id)
+    content_by_key = {
+        "strategy": strategy_content, "plan": plan_content,
+        "briefs": briefs_content, "linking": linking_content,
+    }
 
     tabs = ui.Tabs(
         tabs=[{"label": label, "content": content_by_key[key]} for key, label in _PROJECT_TAB_ORDER],
@@ -3472,6 +3596,95 @@ async def _project_tabs_view(ctx, site_id: str, show_create_brief: str, tab: str
         ui.Header(text=project_label, level=2),
         tabs,
     ])
+
+
+async def _content_linking_tab_view(ctx, site_id: str) -> ui.UINode:
+    """'Internal Linking' tab: this project's Internal Linking Engine status,
+    read from a local cache (see _cache_ile_status) because a panel-render
+    IPC call is unreliable -- same reasoning as the Quick Add sites cache.
+    Shows enabled/disabled, index health, latest plan status, and either an
+    Enable form (not yet enabled / never checked) or a Refresh action plus a
+    pointer to that app's own panel for the actual preview/apply workflow
+    (which needs real post content Webbee fetches via wordpress-hub -- not
+    something this read-only status tab can drive on its own)."""
+    status, error, has_cache = await _read_cached_ile_status(ctx, site_id)
+
+    if error:
+        return ui.Stack(direction="v", gap=2, align="stretch", children=[
+            ui.Text(f"⚠️ Could not reach Internal Linking Engine: {error}", variant="caption"),
+            ui.Button("Retry", variant="secondary",
+                      on_click=ui.Call("get_internal_linking_status", site_id=site_id)),
+        ])
+
+    if not has_cache:
+        return ui.Stack(direction="v", gap=2, align="stretch", children=[
+            ui.Text("Status not checked yet for this project.", variant="caption"),
+            ui.Button("Check Internal Linking status", variant="primary",
+                      on_click=ui.Call("get_internal_linking_status", site_id=site_id)),
+        ])
+
+    enabled = bool(status.get("enabled"))
+    children: list[ui.UINode] = []
+
+    if not enabled:
+        children.append(ui.Text(
+            "Internal Linking Engine is not enabled for this project yet — no content is "
+            "touched until it's turned on and a plan is explicitly applied.",
+            variant="caption",
+        ))
+        children.append(ui.Form(
+            action="enable_internal_linking",
+            submit_label="Enable Internal Linking Engine",
+            defaults={"site_id": site_id},
+            children=[
+                ui.Stack(direction="v", gap=1, align="stretch", children=[
+                    ui.Text("Display name (optional)", variant="caption"),
+                    ui.Input(param_name="domain", placeholder="Leave blank to use the site id"),
+                ]),
+            ],
+        ))
+        return ui.Stack(direction="v", gap=3, align="stretch", children=children)
+
+    children.append(ui.KeyValue(columns=1, items=[
+        {"key": "Mode", "value": "Full auto" if status.get("mode") == "full_auto" else "Review first"},
+        {"key": "Max links per article", "value": str(status.get("max_links_per_post", 3))},
+        {"key": "Indexed articles", "value": str(status.get("indexed_post_count", 0))},
+        {"key": "Confirmed applies", "value": f"{status.get('confirmed_applies_count', 0)}/{status.get('full_auto_threshold', 5)}"},
+        {"key": "Last scanned", "value": status.get("last_scanned_at") or "never"},
+    ]))
+
+    by_lang = status.get("indexed_by_lang") or {}
+    if by_lang:
+        children.append(ui.Text("Indexed by language:", variant="caption"))
+        children.append(ui.KeyValue(columns=2, items=[
+            {"key": lang, "value": str(count)} for lang, count in by_lang.items()
+        ]))
+
+    latest_plan = status.get("latest_plan")
+    if latest_plan:
+        _plan_labels = {
+            "pending_review": "Pending review", "applied": "Applied",
+            "rolled_back": "Rolled back", "rejected": "Rejected",
+        }
+        children.append(ui.Divider())
+        children.append(ui.KeyValue(columns=1, items=[
+            {"key": "Latest plan status", "value": _plan_labels.get(latest_plan.get("status", ""), latest_plan.get("status", "?"))},
+            {"key": "Plan created", "value": latest_plan.get("created_at", "?")},
+        ]))
+    else:
+        children.append(ui.Text("No linking plan built yet for this site.", variant="caption"))
+
+    children.append(ui.Divider())
+    children.append(ui.Text(
+        "Building and applying a linking plan needs the article's real content, "
+        "fetched live — ask Webbee in chat to run it for this site (preview first, "
+        "apply only after you approve the diff).",
+        variant="caption",
+    ))
+    children.append(ui.Button("Refresh status", variant="secondary",
+                               on_click=ui.Call("get_internal_linking_status", site_id=site_id)))
+
+    return ui.Stack(direction="v", gap=3, align="stretch", children=children)
 
 
 async def _briefs_catalog_view(ctx, site_id: str, show_create_brief: str = "") -> ui.UINode:

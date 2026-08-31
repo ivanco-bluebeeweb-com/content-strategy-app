@@ -17,6 +17,8 @@ from imperal_sdk import sdl
 
 class SiteProfile(sdl.Entity):
     """One managed site (e.g. g4s.md, climtec.md)."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""  # stable business key, e.g. 'g4s.md' — NOT the store doc id
     domain: str = ""
     brand_name: str = ""
@@ -33,6 +35,8 @@ class SiteProfile(sdl.Entity):
 
 
 class SiteProfileList(sdl.EntityList[SiteProfile]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -59,6 +63,8 @@ class UpdateSiteProfileParams(BaseModel):
 class Opportunity(sdl.Entity):
     """One candidate content opportunity, sourced from GSC / SEO Audit / manual /
     strategic gap analysis (this app's own topic-generation engine)."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     source: str = ""  # gsc | seo_audit | manual | mixed | strategic_gap_analysis
     primary_query: str = ""
@@ -81,11 +87,15 @@ class Opportunity(sdl.Entity):
 
 
 class OpportunityList(sdl.EntityList[Opportunity]):
+    id: str = ""
+    title: str = ""
     pass
 
 
 class TopicCluster(sdl.Entity):
     """Grouped content theme across related queries."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     label: str = ""
     primary_topic: str = ""
@@ -96,11 +106,15 @@ class TopicCluster(sdl.Entity):
 
 
 class TopicClusterList(sdl.EntityList[TopicCluster]):
+    id: str = ""
+    title: str = ""
     pass
 
 
 class ArticleBrief(sdl.Entity, sdl.Bodied):
     """Structured brief handed downstream to article writing / image planning."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     opportunity_id: str = ""
     working_title: str = ""
@@ -137,6 +151,8 @@ class ArticleBrief(sdl.Entity, sdl.Bodied):
 
 
 class ArticleBriefList(sdl.EntityList[ArticleBrief]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -146,6 +162,8 @@ class ContentAuthor(sdl.Entity):
     Not a generated persona: name/bio/credentials are entered by a human
     about a real person (the site owner, an in-house expert, or a
     contracted writer with actual domain credentials)."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     name: str = ""
     bio: str = ""
@@ -156,6 +174,8 @@ class ContentAuthor(sdl.Entity):
 
 
 class ContentAuthorList(sdl.EntityList[ContentAuthor]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -176,6 +196,8 @@ class ListContentAuthorsParams(BaseModel):
 
 class QueueItem(sdl.Entity):
     """Editorial workflow state — one row per opportunity/brief in flight."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     brief_id: str = ""
     opportunity_id: str = ""
@@ -195,6 +217,8 @@ class QueueItem(sdl.Entity):
 
 
 class QueueItemList(sdl.EntityList[QueueItem]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -333,6 +357,8 @@ class ListSiteProfilesParams(BaseModel):
 
 class ContentCalendarEntry(sdl.Entity):
     """One scheduled slot on the monthly publication grid."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     queue_item_id: str = ""
     scheduled_date: str = ""  # YYYY-MM-DD
@@ -343,6 +369,8 @@ class ContentCalendarEntry(sdl.Entity):
 
 
 class ContentCalendarEntryList(sdl.EntityList[ContentCalendarEntry]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -387,6 +415,8 @@ class BuildWriterBriefParams(BaseModel):
 
 class MediaBriefHandoff(sdl.Entity):
     """Read-only payload for Media Studio's create_media_brief; never generates assets."""
+    id: str = ""
+    title: str = ""
     site: str = ""
     article_title: str = ""
     native_title: str = ""
@@ -429,6 +459,8 @@ class WriterBrief(sdl.Entity, sdl.Bodied):
     platform) — Webbee reads this entity's fields and passes them into Article Writer's
     own tools in the next chat turn. The `body` (from sdl.Bodied) is the full brief as
     Markdown, ready to paste as Article Writer's brief/keyword input."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     queue_item_id: str = ""
     brief_id: str = ""
@@ -464,6 +496,8 @@ class WriterBrief(sdl.Entity, sdl.Bodied):
 class ConnectedSite(sdl.Entity):
     """One site read from a site-provider extension (WordPress Hub today,
     more providers later) — the raw material behind the Quick Add list."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     url: str = ""
     status: str = ""
@@ -472,6 +506,8 @@ class ConnectedSite(sdl.Entity):
 
 
 class ConnectedSiteList(sdl.EntityList[ConnectedSite]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -490,6 +526,8 @@ class EnableInternalLinkingParams(BaseModel):
 
 class ILEStatusRecord(sdl.Entity):
     """Internal Linking Engine status for one project, as read via inter-app IPC."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     status: dict = Field(default_factory=dict)
     error: str = ""
@@ -505,6 +543,8 @@ class ILEStatusRecord(sdl.Entity):
 class SiteCompetitorProfile(sdl.Entity):
     """One tracked competitor for a managed site — SERP/content rival,
     not necessarily the same set as the brand's business-level competitors."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     url: str = ""
     notes: str = ""
@@ -514,6 +554,8 @@ class SiteCompetitorProfile(sdl.Entity):
 
 
 class SiteCompetitorProfileList(sdl.EntityList[SiteCompetitorProfile]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -547,6 +589,8 @@ class ListSiteCompetitorsParams(BaseModel):
 
 class ExistingContentItem(sdl.Entity):
     """One already-published post pulled live from the site for the audit."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     slug: str = ""
     link: str = ""
@@ -558,6 +602,8 @@ class ExistingContentItem(sdl.Entity):
 
 
 class ExistingContentItemList(sdl.EntityList[ExistingContentItem]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -567,6 +613,8 @@ class CannibalizationFinding(sdl.Entity):
     recommendation is decided by the system itself from overlap_score
     (never left for the user to work out); the user's job is only to pick
     one of the offered options via resolve_cannibalization_finding."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     shared_terms: list[str] = []
     overlap_score: float = 0.0  # 0..1, share of significant terms in common
@@ -579,6 +627,8 @@ class CannibalizationFinding(sdl.Entity):
 
 
 class CannibalizationFindingList(sdl.EntityList[CannibalizationFinding]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -594,6 +644,8 @@ class ContentAuditReport(sdl.Entity):
     """Result of a deep audit of a site's EXISTING content — mandatory
     before any new content strategy work for that site. Fields deliberately
     make gaps visible rather than only reporting what's fine."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     total_posts: int = 0
     posts_by_language: dict[str, int] = Field(default_factory=dict)
@@ -663,6 +715,8 @@ class ContentDecayReport(sdl.Entity):
     against their own last recorded reading -- surfaces which articles are
     losing traffic/ranking so they can be refreshed before they die
     entirely, instead of only ever writing new content."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     tracked_count: int = 0
     decaying_count: int = 0
@@ -692,6 +746,8 @@ class PurgeSitePipelineDataParams(BaseModel):
 class PurgeResult(sdl.Entity):
     """Outcome of a full pipeline data wipe — counts removed per collection,
     and which site profiles were kept untouched."""
+    id: str = ""
+    title: str = ""
     opportunities_removed: int = 0
     briefs_removed: int = 0
     queue_items_removed: int = 0
@@ -752,6 +808,8 @@ class OutreachTarget(sdl.Entity):
     """One tracked link-building outreach effort — a named target site,
     tactic, and its real lifecycle status. This is deliberately manual
     and human-run: no outreach email is ever sent by this app."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     target_domain: str = ""
     target_url: str = ""
@@ -768,6 +826,8 @@ class OutreachTarget(sdl.Entity):
 
 
 class OutreachTargetList(sdl.EntityList[OutreachTarget]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -781,6 +841,8 @@ class LinkBuildingReport(sdl.Entity):
     """Summary of a site's active outreach pipeline -- counts by status
     plus a simple reply/acquisition rate, so link-building is a visible
     funnel instead of a pile of untracked emails."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     total_targets: int = 0
     by_status: dict[str, int] = Field(default_factory=dict)
@@ -824,6 +886,8 @@ class KpiSnapshot(sdl.Entity):
     """One recorded periodic KPI reading for a site, combining GA4 + GSC +
     DataForSEO numbers the caller already fetched -- this app never calls
     those connectors itself."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     period_label: str = ""
     ga4_sessions: int = 0
@@ -840,6 +904,8 @@ class KpiSnapshot(sdl.Entity):
 
 
 class KpiSnapshotList(sdl.EntityList[KpiSnapshot]):
+    id: str = ""
+    title: str = ""
     pass
 
 
@@ -855,6 +921,8 @@ class KpiDashboardReport(sdl.Entity):
     """Unified view of a site's most recent KPI snapshot plus its trend
     against the previous one -- the single place to see GA4 + GSC +
     DataForSEO movement together instead of three separate apps."""
+    id: str = ""
+    title: str = ""
     site_id: str = ""
     latest_period: str = ""
     latest: dict[str, object] = Field(default_factory=dict)

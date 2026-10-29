@@ -933,3 +933,37 @@ class KpiDashboardReport(sdl.Entity):
 
 class GetKpiDashboardParams(BaseModel):
     site_id: str = Field(description="Site id from list_site_profiles — never invent it")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Export / Import project
+# ──────────────────────────────────────────────────────────────────────────
+
+class ExportProjectParams(BaseModel):
+    site_id: str = Field(description="Site id of the project to export (from list_site_profiles)")
+
+
+class ExportProjectResult(sdl.Entity):
+    id: str = ""
+    title: str = ""
+    site_id: str = ""
+    project_json: str = ""
+    exported_at: str = ""
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
+class ImportProjectParams(BaseModel):
+    project_json: str = Field(description="Complete project JSON exported from Content Strategy Hub")
+    target_site_id: str = Field(default="", description="Optional custom site_id override; if empty, uses the original site_id from the JSON")
+    overwrite: bool = Field(default=False, description="If true, overwrite any existing project with this site_id")
+
+
+class ImportProjectResult(sdl.Entity):
+    id: str = ""
+    title: str = ""
+    site_id: str = ""
+    created: bool = False
+    updated: bool = False
+    counts: dict[str, int] = Field(default_factory=dict)
+    summary: str = ""
+

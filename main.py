@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import calendar as _calendar
 from datetime import date as _date
+import json
+import time as _time
 
 from imperal_sdk import ActionResult, Extension, ChatExtension, ui
 
@@ -53,6 +55,7 @@ from schemas import (
     ResolveCannibalizationParams,
     PurgePipelineDataParams, PurgeSitePipelineDataParams, PurgeResult,
     ContentAuthor, ContentAuthorList, CreateContentAuthorParams, ListContentAuthorsParams,
+    ExportProjectParams, ExportProjectResult, ImportProjectParams, ImportProjectResult,
 )
 from link_policy import language_priority, resolve_external_source, resolve_key_action_page
 from converters import (
@@ -2907,6 +2910,245 @@ async def purge_site_pipeline_data(ctx, params: PurgeSitePipelineDataParams) -> 
         refresh_panels=["queue", "sources"],
     )
 
+# ──────────────────────────────────────────────────────────────────────────
+# Project Export / Import
+# ──────────────────────────────────────────────────────────────────────────
+
+_PROJECT_COLLECTIONS = [
+    "site_profiles",
+    "content_authors",
+    "opportunities",
+    "article_briefs",
+    "queue_items",
+    "site_competitors",
+    "content_audits",
+    "cannibalization_findings",
+    "existing_content_items",
+    "content_decay_readings",
+    "content_decay_reports",
+    "kpi_snapshots",
+    "kpi_dashboards",
+    "outreach_targets",
+    "ile_status_cache",
+]
+
+
+@chat.function(
+    "export_project",
+    description=(
+        "Export complete project data as a JSON string, including the site profile, "
+        "opportunities, article briefs, queue items, authors, competitors, audits, "
+        "cannibalization findings, existing content, decay reports, KPI history, "
+        "outreach targets, and internal linking status. Nothing is omitted."
+    ),
+    action_type="read",
+    data_model=ExportProjectResult,
+)
+async def export_project(ctx, params: ExportProjectParams) -> ActionResult:
+    """Export absolutely all project data into a portable JSON structure."""
+    site_id = params.site_id.strip()
+    profile_page = await ctx.store.query("site_profiles", where={"site_id": site_id}, limit=1)
+    if not profile_page.data:
+        return ActionResult.error(f"Project '{site_id}' not found in site profiles.", retryable=False)
+
+    exported_collections: dict[str, list[dict]] = {}
+    counts: dict[str, int] = {}
+
+    for coll in _PROJECT_COLLECTIONS:
+        page = await ctx.store.query(coll, where={"site_id": site_id}, limit=1000)
+        items = []
+        for doc in page.data:
+            data = dict(doc.data)
+            data["_id"] = doc.id
+            items.append(data)
+        exported_collections[coll] = items
+        counts[coll] = len(items)
+
+    exported_at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+    bundle = {
+        "format": "content_strategy_hub_project",
+        "version": "1.0",
+        "exported_at": exported_at,
+        "site_id": site_id,
+        "counts": counts,
+        "collections": exported_collections,
+    }
+
+    project_json = json.dumps(bundle, ensure_ascii=False, indent=2)
+    total_records = sum(counts.values())
+
+    result = ExportProjectResult(
+        id=f"export-{site_id}",
+        title=f"Export: {site_id}",
+        site_id=site_id,
+        project_json=project_json,
+        exported_at=exported_at,
+        counts=counts,
+    )
+    return ActionResult.success(
+        result,
+        summary=f"Successfully exported project '{site_id}' with {total_records} record(s) across {len(counts)} collections.",
+    )
+
+
+@chat.function(
+    "import_project",
+    description=(
+        "Import a project from a JSON string exported by Content Strategy Hub. "
+        "Recreates every record point-by-point, correctly preserving relational "
+        "links between opportunities, briefs, authors, and editorial queue items."
+    ),
+    action_type="write",
+    effects=["create:site_profile", "import:project"],
+    event="created",
+    data_model=ImportProjectResult,
+)
+async def import_project(ctx, params: ImportProjectParams) -> ActionResult:
+    """Import a complete project JSON bundle into the store point-by-point."""
+    try:
+        raw_bundle = json.loads(params.project_json)
+    except Exception as exc:
+        return ActionResult.error(f"Invalid JSON format: {exc}", retryable=False)
+
+    if not isinstance(raw_bundle, dict):
+        return ActionResult.error("Invalid project data: root must be a JSON object.", retryable=False)
+
+    orig_site_id = raw_bundle.get("site_id", "")
+    target_site_id = (params.target_site_id or orig_site_id).strip()
+    if not target_site_id:
+        return ActionResult.error("Target site_id cannot be empty.", retryable=False)
+
+    collections = raw_bundle.get("collections", {})
+    if not isinstance(collections, dict):
+        return ActionResult.error("Invalid project JSON: missing 'collections' map.", retryable=False)
+
+    profiles_data = collections.get("site_profiles", [])
+    if not profiles_data:
+        return ActionResult.error("Invalid project JSON: no site_profiles found in export.", retryable=False)
+
+    # Check if site already exists
+    existing_page = await ctx.store.query("site_profiles", where={"site_id": target_site_id}, limit=1)
+    if existing_page.data and not params.overwrite:
+        return ActionResult.error(
+            f"Site '{target_site_id}' already exists. Use overwrite=True or specify a different target_site_id.",
+            retryable=False,
+        )
+
+    # If overwrite, clean up all existing records for this site_id
+    if existing_page.data and params.overwrite:
+        for coll in _PROJECT_COLLECTIONS:
+            page = await ctx.store.query(coll, where={"site_id": target_site_id}, limit=1000)
+            for doc in page.data:
+                await ctx.store.delete(coll, doc.id)
+
+    id_map: dict[str, str] = {}
+    counts: dict[str, int] = {}
+
+    # 1. Import site_profile
+    for row in profiles_data:
+        old_id = row.get("_id", "")
+        payload = {k: v for k, v in row.items() if k != "_id"}
+        payload["site_id"] = target_site_id
+        if orig_site_id != target_site_id and payload.get("domain") == orig_site_id:
+            payload["domain"] = target_site_id
+        doc = await ctx.store.create("site_profiles", payload)
+        if old_id:
+            id_map[old_id] = doc.id
+        counts["site_profiles"] = counts.get("site_profiles", 0) + 1
+
+    # 2. Import content_authors (needed before article_briefs)
+    for row in collections.get("content_authors", []):
+        old_id = row.get("_id", "")
+        payload = {k: v for k, v in row.items() if k != "_id"}
+        payload["site_id"] = target_site_id
+        doc = await ctx.store.create("content_authors", payload)
+        if old_id:
+            id_map[old_id] = doc.id
+        counts["content_authors"] = counts.get("content_authors", 0) + 1
+
+    # 3. Import opportunities (needed before briefs & queue items)
+    for row in collections.get("opportunities", []):
+        old_id = row.get("_id", "")
+        payload = {k: v for k, v in row.items() if k != "_id"}
+        payload["site_id"] = target_site_id
+        doc = await ctx.store.create("opportunities", payload)
+        if old_id:
+            id_map[old_id] = doc.id
+        counts["opportunities"] = counts.get("opportunities", 0) + 1
+
+    # 4. Import article_briefs (remap opportunity_id and author_id)
+    for row in collections.get("article_briefs", []):
+        old_id = row.get("_id", "")
+        payload = {k: v for k, v in row.items() if k != "_id"}
+        payload["site_id"] = target_site_id
+        if payload.get("opportunity_id") in id_map:
+            payload["opportunity_id"] = id_map[payload["opportunity_id"]]
+        if payload.get("author_id") in id_map:
+            payload["author_id"] = id_map[payload["author_id"]]
+        doc = await ctx.store.create("article_briefs", payload)
+        if old_id:
+            id_map[old_id] = doc.id
+        counts["article_briefs"] = counts.get("article_briefs", 0) + 1
+
+    # 5. Import queue_items (remap opportunity_id and brief_id)
+    for row in collections.get("queue_items", []):
+        old_id = row.get("_id", "")
+        payload = {k: v for k, v in row.items() if k != "_id"}
+        payload["site_id"] = target_site_id
+        if payload.get("opportunity_id") in id_map:
+            payload["opportunity_id"] = id_map[payload["opportunity_id"]]
+        if payload.get("brief_id") in id_map:
+            payload["brief_id"] = id_map[payload["brief_id"]]
+        doc = await ctx.store.create("queue_items", payload)
+        if old_id:
+            id_map[old_id] = doc.id
+        counts["queue_items"] = counts.get("queue_items", 0) + 1
+
+    # 6. Import remaining collections
+    remaining_colls = [
+        "site_competitors",
+        "content_audits",
+        "cannibalization_findings",
+        "existing_content_items",
+        "content_decay_readings",
+        "content_decay_reports",
+        "kpi_snapshots",
+        "kpi_dashboards",
+        "outreach_targets",
+        "ile_status_cache",
+    ]
+    for coll in remaining_colls:
+        for row in collections.get(coll, []):
+            old_id = row.get("_id", "")
+            payload = {k: v for k, v in row.items() if k != "_id"}
+            payload["site_id"] = target_site_id
+            doc = await ctx.store.create(coll, payload)
+            if old_id:
+                id_map[old_id] = doc.id
+            counts[coll] = counts.get(coll, 0) + 1
+
+    total_imported = sum(counts.values())
+    summary = (
+        f"Imported project '{target_site_id}' successfully: {total_imported} record(s) "
+        f"({counts.get('site_profiles', 0)} profile, {counts.get('opportunities', 0)} opportunities, "
+        f"{counts.get('article_briefs', 0)} briefs, {counts.get('queue_items', 0)} queue items, "
+        f"{counts.get('content_authors', 0)} authors, {counts.get('site_competitors', 0)} competitors, "
+        f"{counts.get('content_audits', 0)} content audits, {counts.get('cannibalization_findings', 0)} cannibalization findings, "
+        f"{counts.get('existing_content_items', 0)} content items, {counts.get('kpi_snapshots', 0)} KPI snapshots, "
+        f"{counts.get('outreach_targets', 0)} outreach targets)."
+    )
+
+    result = ImportProjectResult(
+        id=f"import-{target_site_id}",
+        title=f"Import: {target_site_id}",
+        site_id=target_site_id,
+        created=not bool(existing_page.data),
+        updated=bool(existing_page.data),
+        counts=counts,
+        summary=summary,
+    )
+    return ActionResult.success(result, summary=summary, refresh_panels=["queue", "brief", "sources"])
+
 
 
 _SITES_CACHE_MARKER = "quick_add_sites"  # value of the "kind" field identifying the one cache row
@@ -3562,7 +3804,10 @@ async def _content_plan_tab_view(ctx, site_id: str) -> ui.UINode:
     ])
 
 
-async def _project_tabs_view(ctx, site_id: str, show_create_brief: str, tab: str) -> ui.UINode:
+async def _project_tabs_view(
+    ctx, site_id: str, show_create_brief: str, tab: str,
+    show_export: str = "", show_import: str = "",
+) -> ui.UINode:
     """Project detail = a real ui.Tabs switcher (client-side, no round trip)
     with 3 tabs -- Overview / Content Plan / Content Briefs -- each one's
     content built as a ui.Accordion of collapsible sections. Default tab
@@ -3592,8 +3837,93 @@ async def _project_tabs_view(ctx, site_id: str, show_create_brief: str, tab: str
         default_tab=default_index,
     )
 
+    header_row = ui.Row(
+        gap=2,
+        children=[
+            ui.Header(text=project_label, level=2),
+            ui.Button(
+                "Export",
+                variant="secondary",
+                size="sm",
+                icon="Download",
+                on_click=ui.Call("__panel__brief", site_id=site_id, show_export="1", show_import=""),
+            ),
+            ui.Button(
+                "Import",
+                variant="secondary",
+                size="sm",
+                icon="Upload",
+                on_click=ui.Call("__panel__brief", site_id=site_id, show_import="1", show_export=""),
+            ),
+        ],
+    )
+
+    dialogs: list[ui.UINode] = []
+
+    if show_export:
+        # Generate complete export bundle point-by-point
+        bundle = await _generate_project_export_bundle(ctx, site_id)
+        project_json = json.dumps(bundle, ensure_ascii=False, indent=2)
+        dialogs.append(
+            ui.Dialog(
+                title=f"Export Project · {site_id}",
+                content=ui.Stack(
+                    direction="v", gap=2,
+                    children=[
+                        ui.Text(
+                            "Complete project export bundle including site profile, opportunities, "
+                            "briefs, editorial queue, authors, competitors, content audits, cannibalization findings, "
+                            "content decay reports, KPI history, outreach targets, and internal linking status. "
+                            "Copy this JSON to import on another account.",
+                            variant="caption",
+                        ),
+                        ui.TextArea(
+                            param_name="exported_json",
+                            value=project_json,
+                            rows=14,
+                        ),
+                    ],
+                ),
+                confirm_label="Done",
+                cancel_label="Close",
+                on_confirm=ui.Call("__panel__brief", site_id=site_id, show_export="", show_import=""),
+                on_cancel=ui.Call("__panel__brief", site_id=site_id, show_export="", show_import=""),
+            )
+        )
+
+    if show_import:
+        dialogs.append(
+            ui.Dialog(
+                title=f"Import Project · {site_id}",
+                content=ui.Stack(
+                    direction="v", gap=2,
+                    children=[
+                        ui.Text(
+                            "Paste complete project JSON exported from Content Strategy Hub. "
+                            "All records and relational references will be recreated point-by-point.",
+                            variant="caption",
+                        ),
+                        ui.TextArea(
+                            param_name="project_json",
+                            placeholder="Paste project JSON here...",
+                            rows=12,
+                        ),
+                        ui.Input(
+                            param_name="target_site_id",
+                            placeholder=f"Target site ID (leave blank to import as '{site_id}')",
+                        ),
+                    ],
+                ),
+                confirm_label="Import Project",
+                cancel_label="Cancel",
+                on_confirm=ui.Call("import_project", target_site_id=site_id, overwrite=True),
+                on_cancel=ui.Call("__panel__brief", site_id=site_id, show_import="", show_export=""),
+            )
+        )
+
     return ui.Stack(direction="v", gap=3, children=[
-        ui.Header(text=project_label, level=2),
+        header_row,
+        *dialogs,
         tabs,
     ])
 

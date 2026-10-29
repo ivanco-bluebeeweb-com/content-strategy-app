@@ -1,0 +1,32 @@
+Phase: Project Import/Export Full Fidelity Feature
+Status: Verified & Completed
+Date: 2026-10-29
+App: Content Strategy Hub
+Author: vlad@bluebeeweb.com
+
+Summary of Changes:
+- schemas.py:
+  * Added ExportProjectParams, ExportProjectResult
+  * Added ImportProjectParams, ImportProjectResult
+- main.py:
+  * Backend action export_project: extracts site_profile and all 14 related store collections:
+    - opportunities
+    - article_briefs
+    - queue_items
+    - site_competitors
+    - content_audits
+    - cannibalization_findings
+    - existing_content_items
+    - content_authors
+    - content_decay_readings
+    - content_decay_reports
+    - kpi_snapshots
+    - kpi_dashboards
+    - outreach_targets
+    - ile_status_cache
+  * Backend action import_project: restores project and all collections with direct overwrite or ID remapping
+  * UI in _project_tabs_view: Added "Export" and "Import" buttons in the project header row with modal dialogs
+- tests/test_smoke.py:
+  * Comprehensive roundtrip test test_export_and_import_project_roundtrip verifying complete export/import fidelity across all collections.
+- backup/:
+  * Created pre-modification backups of main.py, schemas.py, and imperal.json.

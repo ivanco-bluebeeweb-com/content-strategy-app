@@ -2708,3 +2708,95 @@ async def test_generate_strategic_topics_funnel_focus_forces_single_stage():
     for opp in result.data.items:
         assert opp.funnel_stage == "bofu"
         assert opp.source == "strategic_gap_analysis"
+
+
+# ---------------------------------------------------------------------------
+# Project Export / Import Roundtrip Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_export_and_import_project_full_roundtrip():
+    import json
+    from schemas import ExportProjectParams, ImportProjectParams
+
+    ctx = MockContext()
+    site_id = "test-export.com"
+
+    await m.create_site_profile(ctx, CreateSiteProfileParams(
+        site_id=site_id,
+        domain="test-export.com",
+        brand_name="Test Export Site",
+        business_description="Enterprise HVAC solutions",
+        target_languages=["ro", "ru"],
+        content_categories=["climatizare"],
+        cta_default="Get a quote",
+        approved_visual_guidance={
+            "profile_id": "prof_123",
+            "profile_revision": 1,
+            "vbs_id": "vbs_456",
+            "vbs_revision": 1,
+            "snapshot_hash": "hash_abc",
+            "visual_intent": "Modern clean",
+        },
+    ))
+
+    await m.add_site_competitor(ctx, AddSiteCompetitorParams(
+        site_id=site_id, domain="rival-air.md", name="Rival Air MD",
+    ))
+    await m.create_content_author(ctx, CreateContentAuthorParams(
+        site_id=site_id, author_id="author-radue", name="Radu Enache",
+    ))
+    await ctx.store.create("opportunities", {
+        "site_id": site_id, "title": "Chiller Guide", "primary_keyword": "chiller",
+    })
+    await ctx.store.create("article_briefs", {
+        "site_id": site_id, "title": "Chiller Brief", "primary_keyword": "chiller",
+    })
+    await ctx.store.create("kpi_snapshots", {
+        "site_id": site_id, "snapshot_date": "2026-10-01", "organic_clicks": 500,
+    })
+
+    export_res = await m.export_project(ctx, ExportProjectParams(site_id=site_id))
+    assert export_res.status == "success"
+    json_str = export_res.data.project_json
+    data = json.loads(json_str)
+
+    assert data["site_id"] == site_id
+    assert len(data["collections"]["site_profiles"]) == 1
+    assert data["collections"]["site_profiles"][0]["brand_name"] == "Test Export Site"
+    assert data["collections"]["site_profiles"][0]["approved_visual_guidance"]["profile_id"] == "prof_123"
+    assert len(data["collections"]["site_competitors"]) == 1
+    assert len(data["collections"]["content_authors"]) == 1
+    assert len(data["collections"]["opportunities"]) == 1
+    assert len(data["collections"]["article_briefs"]) == 1
+    assert len(data["collections"]["kpi_snapshots"]) == 1
+
+    # Import into a completely fresh context (simulating another user account)
+    target_ctx = MockContext()
+    target_site_id = "imported-site.com"
+    import_res = await m.import_project(target_ctx, ImportProjectParams(
+        project_json=json_str,
+        target_site_id=target_site_id,
+    ))
+    assert import_res.status == "success"
+
+    target_prof_list = await target_ctx.store.query("site_profiles", where={"site_id": target_site_id})
+    assert len(target_prof_list.data) == 1
+    imported_prof = target_prof_list.data[0].data
+    assert imported_prof is not None
+    assert imported_prof["brand_name"] == "Test Export Site"
+    assert imported_prof["approved_visual_guidance"]["profile_id"] == "prof_123"
+    assert imported_prof["approved_visual_guidance"]["snapshot_hash"] == "hash_abc"
+
+    opps = await target_ctx.store.query("opportunities", where={"site_id": target_site_id})
+    assert len(opps.data) == 1
+    assert opps.data[0].data["site_id"] == target_site_id
+    assert opps.data[0].data["title"] == "Chiller Guide"
+
+    briefs = await target_ctx.store.query("article_briefs", where={"site_id": target_site_id})
+    assert len(briefs.data) == 1
+    assert briefs.data[0].data["site_id"] == target_site_id
+
+    kpis = await target_ctx.store.query("kpi_snapshots", where={"site_id": target_site_id})
+    assert len(kpis.data) == 1
+    assert kpis.data[0].data["snapshot_date"] == "2026-10-01"

@@ -3864,6 +3864,10 @@ async def _project_tabs_view(
         # Generate complete export bundle point-by-point
         bundle = await _generate_project_export_bundle(ctx, site_id)
         project_json = json.dumps(bundle, ensure_ascii=False, indent=2)
+        import base64
+        b64_json = base64.b64encode(project_json.encode("utf-8")).decode("utf-8")
+        data_uri = f"data:application/json;charset=utf-8;base64,{b64_json}"
+
         dialogs.append(
             ui.Dialog(
                 title=f"Export Project · {site_id}",
@@ -3873,14 +3877,21 @@ async def _project_tabs_view(
                         ui.Text(
                             "Complete project export bundle including site profile, opportunities, "
                             "briefs, editorial queue, authors, competitors, content audits, cannibalization findings, "
-                            "content decay reports, KPI history, outreach targets, and internal linking status. "
-                            "Copy this JSON to import on another account.",
+                            "content decay reports, KPI history, outreach targets, and internal linking status.",
+                            variant="caption",
+                        ),
+                        ui.Link(
+                            label=f"💾 Download {site_id}-export.json",
+                            href=data_uri,
+                        ),
+                        ui.Text(
+                            "Or copy the raw JSON directly:",
                             variant="caption",
                         ),
                         ui.TextArea(
                             param_name="exported_json",
                             value=project_json,
-                            rows=14,
+                            rows=12,
                         ),
                     ],
                 ),
@@ -4094,10 +4105,17 @@ async def _briefs_catalog_view(ctx, site_id: str, show_create_brief: str = "") -
     icon="📝",
     center_overlay=True,
 )
-async def brief_panel(ctx, queue_item_id: str = "", site_id: str = "", show_create_brief: str = "", tab: str = "", **kwargs) -> object:
+async def brief_panel(
+    ctx, queue_item_id: str = "", site_id: str = "", show_create_brief: str = "",
+    tab: str = "", show_export: str = "", show_import: str = "", **kwargs,
+) -> object:
     if not queue_item_id:
         if site_id:
-            return await _project_tabs_view(ctx, site_id, show_create_brief, tab)
+            return await _project_tabs_view(
+                ctx, site_id, show_create_brief, tab,
+                show_export=show_export or kwargs.get("show_export", ""),
+                show_import=show_import or kwargs.get("show_import", ""),
+            )
         return ui.Empty(message="Select a project to see its briefs.", icon="📝")
 
     q_doc = await ctx.store.get("queue_items", queue_item_id)

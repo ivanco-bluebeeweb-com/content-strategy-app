@@ -1,4 +1,4 @@
-Phase: Project Import/Export Full Fidelity Feature
+Phase: Project Import/Export Full Fidelity Feature & Download Fix
 Status: Verified & Completed
 Date: 2026-10-29
 App: Content Strategy Hub
@@ -25,7 +25,10 @@ Summary of Changes:
     - outreach_targets
     - ile_status_cache
   * Backend action import_project: restores project and all collections with direct overwrite or ID remapping
-  * UI in _project_tabs_view: Added "Export" and "Import" buttons in the project header row with modal dialogs
+  * UI in _project_tabs_view & brief_panel:
+    - Fixed brief_panel to accept show_export and show_import parameters and forward them to _project_tabs_view. Previously, clicking Export or Import did nothing because brief_panel swallowed those parameters.
+    - Added direct file download link (ui.Link with data:application/json base64 URI) in the Export dialog so clicking it downloads the .json file directly.
+    - Added raw JSON textarea with Copy instructions.
 - tests/test_smoke.py:
   * Comprehensive roundtrip test test_export_and_import_project_roundtrip verifying complete export/import fidelity across all collections.
 - backup/:

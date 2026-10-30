@@ -2933,6 +2933,31 @@ _PROJECT_COLLECTIONS = [
 ]
 
 
+async def _generate_project_export_bundle(ctx, site_id: str) -> dict:
+    exported_collections: dict[str, list[dict]] = {}
+    counts: dict[str, int] = {}
+
+    for coll in _PROJECT_COLLECTIONS:
+        page = await ctx.store.query(coll, where={"site_id": site_id}, limit=1000)
+        items = []
+        for doc in page.data:
+            data = dict(doc.data)
+            data["_id"] = doc.id
+            items.append(data)
+        exported_collections[coll] = items
+        counts[coll] = len(items)
+
+    exported_at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+    return {
+        "format": "content_strategy_hub_project",
+        "version": "1.0",
+        "exported_at": exported_at,
+        "site_id": site_id,
+        "counts": counts,
+        "collections": exported_collections,
+    }
+
+
 @chat.function(
     "export_project",
     description=(
@@ -2951,30 +2976,9 @@ async def export_project(ctx, params: ExportProjectParams) -> ActionResult:
     if not profile_page.data:
         return ActionResult.error(f"Project '{site_id}' not found in site profiles.", retryable=False)
 
-    exported_collections: dict[str, list[dict]] = {}
-    counts: dict[str, int] = {}
-
-    for coll in _PROJECT_COLLECTIONS:
-        page = await ctx.store.query(coll, where={"site_id": site_id}, limit=1000)
-        items = []
-        for doc in page.data:
-            data = dict(doc.data)
-            data["_id"] = doc.id
-            items.append(data)
-        exported_collections[coll] = items
-        counts[coll] = len(items)
-
-    exported_at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
-    bundle = {
-        "format": "content_strategy_hub_project",
-        "version": "1.0",
-        "exported_at": exported_at,
-        "site_id": site_id,
-        "counts": counts,
-        "collections": exported_collections,
-    }
-
+    bundle = await _generate_project_export_bundle(ctx, site_id)
     project_json = json.dumps(bundle, ensure_ascii=False, indent=2)
+    counts = bundle["counts"]
     total_records = sum(counts.values())
 
     result = ExportProjectResult(
@@ -2982,7 +2986,7 @@ async def export_project(ctx, params: ExportProjectParams) -> ActionResult:
         title=f"Export: {site_id}",
         site_id=site_id,
         project_json=project_json,
-        exported_at=exported_at,
+        exported_at=bundle["exported_at"],
         counts=counts,
     )
     return ActionResult.success(

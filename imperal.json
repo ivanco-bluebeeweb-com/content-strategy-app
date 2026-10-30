@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.9.19",
+  "sdk_version": "5.13.1",
   "app_id": "content-strategy-app",
   "version": "0.7.0",
   "name": "Content Strategy",
@@ -50,7 +50,7 @@
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Optional per-language override of business_description, e.g. {'ru': '...', 'ro': '...'} \u2014 used by create_brief so target_audience is written in the brief's actual target_language instead of always falling back to business_description",
+            "description": "Optional per-language override of business_description, e.g. {'ru': '...', 'ro': '...'} — used by create_brief so target_audience is written in the brief's actual target_language instead of always falling back to business_description",
             "title": "Business Description I18N",
             "type": "object"
           },
@@ -119,17 +119,12 @@
         "description": "One managed site (e.g. g4s.md, climtec.md).",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -277,10 +272,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "SiteProfile",
         "type": "object",
         "x-sdl": "entity"
@@ -304,7 +295,7 @@
         "description": "Patch an existing site profile with only the given fields. Needed so\na re-run of build_content_strategy_handoff (Brand Strategy Hub) can\nactually refresh a site profile's content_categories/business_description\netc. -- create_site_profile refuses to run again once a site_id exists,\nand until this existed there was NO way to update one afterwards.",
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -487,17 +478,12 @@
         "description": "One managed site (e.g. g4s.md, climtec.md).",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -645,10 +631,6 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "SiteProfile",
         "type": "object",
         "x-sdl": "entity"
@@ -684,17 +666,12 @@
             "description": "One managed site (e.g. g4s.md, climtec.md).",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -842,10 +819,6 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "SiteProfile",
             "type": "object",
             "x-sdl": "entity"
@@ -887,6 +860,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -904,7 +887,7 @@
     },
     {
       "name": "add_site_competitor",
-      "description": "Track a competitor for a managed site at the web/content level \u2014 which competing pages/sites rank or compete for the same topics, with observed strengths and weaknesses. Distinct from Brand Strategy Hub's brand-level competitors: this is about content/SERP rivals for THIS site specifically.",
+      "description": "Track a competitor for a managed site at the web/content level — which competing pages/sites rank or compete for the same topics, with observed strengths and weaknesses. Distinct from Brand Strategy Hub's brand-level competitors: this is about content/SERP rivals for THIS site specifically.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -914,7 +897,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -969,20 +952,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "One tracked competitor for a managed site \u2014 SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
+        "description": "One tracked competitor for a managed site — SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -1067,10 +1045,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "SiteCompetitorProfile",
         "type": "object",
         "x-sdl": "entity"
@@ -1109,20 +1083,15 @@
       "return_schema": {
         "$defs": {
           "SiteCompetitorProfile": {
-            "description": "One tracked competitor for a managed site \u2014 SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
+            "description": "One tracked competitor for a managed site — SERP/content rival,\nnot necessarily the same set as the brand's business-level competitors.",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -1207,10 +1176,6 @@
                 "type": "array"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "SiteCompetitorProfile",
             "type": "object",
             "x-sdl": "entity"
@@ -1252,6 +1217,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -1279,7 +1254,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -1334,20 +1309,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "One tracked link-building outreach effort \u2014 a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
+        "description": "One tracked link-building outreach effort — a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -1462,10 +1432,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "OutreachTarget",
         "type": "object",
         "x-sdl": "entity"
@@ -1488,7 +1454,7 @@
       "params_schema": {
         "properties": {
           "outreach_id": {
-            "description": "UUID of the outreach target to update \u2014 from list_outreach_targets, never invented",
+            "description": "UUID of the outreach target to update — from list_outreach_targets, never invented",
             "title": "Outreach Id",
             "type": "string"
           },
@@ -1518,20 +1484,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "One tracked link-building outreach effort \u2014 a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
+        "description": "One tracked link-building outreach effort — a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -1646,10 +1607,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "OutreachTarget",
         "type": "object",
         "x-sdl": "entity"
@@ -1694,20 +1651,15 @@
       "return_schema": {
         "$defs": {
           "OutreachTarget": {
-            "description": "One tracked link-building outreach effort \u2014 a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
+            "description": "One tracked link-building outreach effort — a named target site,\ntactic, and its real lifecycle status. This is deliberately manual\nand human-run: no outreach email is ever sent by this app.",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -1822,10 +1774,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "OutreachTarget",
             "type": "object",
             "x-sdl": "entity"
@@ -1867,6 +1815,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -1892,7 +1850,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -1907,17 +1865,12 @@
         "description": "Summary of a site's active outreach pipeline -- counts by status\nplus a simple reply/acquisition rate, so link-building is a visible\nfunnel instead of a pile of untracked emails.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -2014,10 +1967,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "LinkBuildingReport",
         "type": "object",
         "x-sdl": "entity"
@@ -2030,7 +1979,7 @@
     },
     {
       "name": "create_content_author",
-      "description": "Register a real, named content author for a site \u2014 name, bio, credentials, and expertise areas establishing genuine E-E-A-T (Experience, Expertise, Authoritativeness, Trust). This is not a generated persona: enter a real person's real credentials. Required before create_brief for any site with requires_named_author=true.",
+      "description": "Register a real, named content author for a site — name, bio, credentials, and expertise areas establishing genuine E-E-A-T (Experience, Expertise, Authoritativeness, Trust). This is not a generated persona: enter a real person's real credentials. Required before create_brief for any site with requires_named_author=true.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -2040,7 +1989,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -2095,20 +2044,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "A real, named author with declared expertise \u2014 the E-E-A-T unit this\npipeline attaches to a brief instead of leaving articles unattributed.\nNot a generated persona: name/bio/credentials are entered by a human\nabout a real person (the site owner, an in-house expert, or a\ncontracted writer with actual domain credentials).",
+        "description": "A real, named author with declared expertise — the E-E-A-T unit this\npipeline attaches to a brief instead of leaving articles unattributed.\nNot a generated persona: name/bio/credentials are entered by a human\nabout a real person (the site owner, an in-house expert, or a\ncontracted writer with actual domain credentials).",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -2210,10 +2154,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ContentAuthor",
         "type": "object",
         "x-sdl": "entity"
@@ -2252,20 +2192,15 @@
       "return_schema": {
         "$defs": {
           "ContentAuthor": {
-            "description": "A real, named author with declared expertise \u2014 the E-E-A-T unit this\npipeline attaches to a brief instead of leaving articles unattributed.\nNot a generated persona: name/bio/credentials are entered by a human\nabout a real person (the site owner, an in-house expert, or a\ncontracted writer with actual domain credentials).",
+            "description": "A real, named author with declared expertise — the E-E-A-T unit this\npipeline attaches to a brief instead of leaving articles unattributed.\nNot a generated persona: name/bio/credentials are entered by a human\nabout a real person (the site owner, an in-house expert, or a\ncontracted writer with actual domain credentials).",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -2367,10 +2302,6 @@
                 "type": "array"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "ContentAuthor",
             "type": "object",
             "x-sdl": "entity"
@@ -2412,6 +2343,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -2439,7 +2380,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -2451,20 +2392,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Result of a deep audit of a site's EXISTING content \u2014 mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
+        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -2580,10 +2516,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ContentAuditReport",
         "type": "object",
         "x-sdl": "entity"
@@ -2604,7 +2536,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -2616,20 +2548,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Result of a deep audit of a site's EXISTING content \u2014 mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
+        "description": "Result of a deep audit of a site's EXISTING content — mandatory\nbefore any new content strategy work for that site. Fields deliberately\nmake gaps visible rather than only reporting what's fine.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -2745,10 +2672,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ContentAuditReport",
         "type": "object",
         "x-sdl": "entity"
@@ -2771,7 +2694,7 @@
       "params_schema": {
         "$defs": {
           "ContentPerformanceSignal": {
-            "description": "One URL's performance-over-a-period reading, typically fetched from the\nGoogle Search Console connector (top_queries aggregated by page) or the\nDataForSEO connector (check_serp_ranking / rank history) by the\norchestrator and passed in here. This app does not call other extensions\ndirectly for this \u2014 Webbee chains that connector's output into this\ntool's input, exactly like QuerySignal for discover_opportunities.",
+            "description": "One URL's performance-over-a-period reading, typically fetched from the\nGoogle Search Console connector (top_queries aggregated by page) or the\nDataForSEO connector (check_serp_ranking / rank history) by the\norchestrator and passed in here. This app does not call other extensions\ndirectly for this — Webbee chains that connector's output into this\ntool's input, exactly like QuerySignal for discover_opportunities.",
             "properties": {
               "url": {
                 "description": "The published page's own URL, matched against existing_content_items",
@@ -2818,7 +2741,7 @@
         },
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -2900,17 +2823,12 @@
         "description": "Result of comparing a site's published URLs' current performance\nagainst their own last recorded reading -- surfaces which articles are\nlosing traffic/ranking so they can be refreshed before they die\nentirely, instead of only ever writing new content.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -3012,10 +2930,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ContentDecayReport",
         "type": "object",
         "x-sdl": "entity"
@@ -3036,7 +2950,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -3110,17 +3024,12 @@
         "description": "Result of comparing a site's published URLs' current performance\nagainst their own last recorded reading -- surfaces which articles are\nlosing traffic/ranking so they can be refreshed before they die\nentirely, instead of only ever writing new content.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -3222,10 +3131,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ContentDecayReport",
         "type": "object",
         "x-sdl": "entity"
@@ -3248,12 +3153,12 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "period_label": {
-            "description": "Reporting period label, e.g. '2026-07' or '2026-W28' \u2014 used to order snapshots and label the trend",
+            "description": "Reporting period label, e.g. '2026-07' or '2026-W28' — used to order snapshots and label the trend",
             "title": "Period Label",
             "type": "string"
           },
@@ -3329,17 +3234,12 @@
         "description": "One recorded periodic KPI reading for a site, combining GA4 + GSC +\nDataForSEO numbers the caller already fetched -- this app never calls\nthose connectors itself.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -3462,10 +3362,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "KpiSnapshot",
         "type": "object",
         "x-sdl": "entity"
@@ -3486,7 +3382,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           }
@@ -3530,17 +3426,12 @@
         "description": "Unified view of a site's most recent KPI snapshot plus its trend\nagainst the previous one -- the single place to see GA4 + GSC +\nDataForSEO movement together instead of three separate apps.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -3634,10 +3525,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "KpiDashboardReport",
         "type": "object",
         "x-sdl": "entity"
@@ -3658,13 +3545,13 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
           "candidate_keyword": {
             "default": "",
-            "description": "Optional: a NEW topic/keyword being considered for a fresh article \u2014 checked against existing content so a duplicate topic is caught BEFORE writing, not after. Empty = audit existing articles against each other only.",
+            "description": "Optional: a NEW topic/keyword being considered for a fresh article — checked against existing content so a duplicate topic is caught BEFORE writing, not after. Empty = audit existing articles against each other only.",
             "title": "Candidate Keyword",
             "type": "string"
           }
@@ -3678,20 +3565,15 @@
       "return_schema": {
         "$defs": {
           "CannibalizationFinding": {
-            "description": "Two or more existing articles competing for the same topic/keywords \u2014\nthey will split ranking signal instead of reinforcing one page. The\nrecommendation is decided by the system itself from overlap_score\n(never left for the user to work out); the user's job is only to pick\none of the offered options via resolve_cannibalization_finding.",
+            "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page. The\nrecommendation is decided by the system itself from overlap_score\n(never left for the user to work out); the user's job is only to pick\none of the offered options via resolve_cannibalization_finding.",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -3791,10 +3673,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "CannibalizationFinding",
             "type": "object",
             "x-sdl": "entity"
@@ -3836,6 +3714,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -3881,20 +3769,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Two or more existing articles competing for the same topic/keywords \u2014\nthey will split ranking signal instead of reinforcing one page. The\nrecommendation is decided by the system itself from overlap_score\n(never left for the user to work out); the user's job is only to pick\none of the offered options via resolve_cannibalization_finding.",
+        "description": "Two or more existing articles competing for the same topic/keywords —\nthey will split ranking signal instead of reinforcing one page. The\nrecommendation is decided by the system itself from overlap_score\n(never left for the user to work out); the user's job is only to pick\none of the offered options via resolve_cannibalization_finding.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -3994,10 +3877,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "CannibalizationFinding",
         "type": "object",
         "x-sdl": "entity"
@@ -4010,7 +3889,7 @@
     },
     {
       "name": "discover_opportunities",
-      "description": "Turn query signals (fetch these first from the Google Search Console connector's top_queries or striking_distance tools, or from SEO Audit Engine findings) into scored content opportunities for a site, clustered by topic. Creates queue items in 'idea' status for each new opportunity. ASSISTANT POLICY (not enforced by this tool's params): before calling this, ask the user in chat how many articles/opportunities they want surfaced this round \u2014 never assume the 'limit' default silently. If the user's answer is ambiguous (e.g. mixed-language phrasing, unclear number, or could mean per-language rather than total \u2014 this platform is multilingual), ask a clarifying follow-up instead of guessing.",
+      "description": "Turn query signals (fetch these first from the Google Search Console connector's top_queries or striking_distance tools, or from SEO Audit Engine findings) into scored content opportunities for a site, clustered by topic. Creates queue items in 'idea' status for each new opportunity. ASSISTANT POLICY (not enforced by this tool's params): before calling this, ask the user in chat how many articles/opportunities they want surfaced this round — never assume the 'limit' default silently. If the user's answer is ambiguous (e.g. mixed-language phrasing, unclear number, or could mean per-language rather than total — this platform is multilingual), ask a clarifying follow-up instead of guessing.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -4021,7 +3900,7 @@
       "params_schema": {
         "$defs": {
           "QuerySignal": {
-            "description": "One query-level signal, typically fetched from Google Search Console\n(top_queries / striking_distance) by the orchestrator and passed in here.\nThis app does not call other extensions directly \u2014 Webbee chains the\nGSC connector's output into this tool's input.",
+            "description": "One query-level signal, typically fetched from Google Search Console\n(top_queries / striking_distance) by the orchestrator and passed in here.\nThis app does not call other extensions directly — Webbee chains the\nGSC connector's output into this tool's input.",
             "properties": {
               "query": {
                 "description": "The search query text",
@@ -4073,7 +3952,7 @@
             "type": "string"
           },
           "queries": {
-            "description": "Query signals to turn into opportunities \u2014 typically the output of the Google Search Console connector's top_queries or striking_distance tools, fetched first and passed in here. If empty, no opportunities are created (this tool does not fetch GSC data itself).",
+            "description": "Query signals to turn into opportunities — typically the output of the Google Search Console connector's top_queries or striking_distance tools, fetched first and passed in here. If empty, no opportunities are created (this tool does not fetch GSC data itself).",
             "items": {
               "$ref": "#/$defs/QuerySignal"
             },
@@ -4099,17 +3978,12 @@
             "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -4253,10 +4127,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "Opportunity",
             "type": "object",
             "x-sdl": "entity"
@@ -4298,6 +4168,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -4324,10 +4204,10 @@
       ],
       "id_projection": "",
       "params_schema": {
-        "description": "UI-only convenience wrapper: fetches the site's own Search Console\ntop_queries via IPC (no manual JSON copy-paste) and feeds them straight\ninto discover_opportunities's existing scoring/clustering/audit-gate\nlogic. Exists so the panel's 'Discover from Search Console' button has\nsomething concrete to call \u2014 discover_opportunities itself stays pure\nand testable, taking queries as plain input.",
+        "description": "UI-only convenience wrapper: fetches the site's own Search Console\ntop_queries via IPC (no manual JSON copy-paste) and feeds them straight\ninto discover_opportunities's existing scoring/clustering/audit-gate\nlogic. Exists so the panel's 'Discover from Search Console' button has\nsomething concrete to call — discover_opportunities itself stays pure\nand testable, taking queries as plain input.",
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -4350,17 +4230,12 @@
             "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -4504,10 +4379,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "Opportunity",
             "type": "object",
             "x-sdl": "entity"
@@ -4549,6 +4420,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -4601,17 +4482,12 @@
             "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -4755,10 +4631,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "Opportunity",
             "type": "object",
             "x-sdl": "entity"
@@ -4800,6 +4672,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -4829,7 +4711,7 @@
         "description": "Params for the 'beyond existing opportunities' strategic topic engine.\n\nUnlike discover_opportunities (which only scores/clusters query signals\nthe caller already fetched from GSC/SEO Audit), this reasons from the\nsite's OWN declared content_categories and produces genuinely NEW\ncandidate topics that no query signal has surfaced yet -- covering\ntofu/mofu/bofu funnel stages deliberately rather than by accident.",
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it",
+            "description": "Site id from list_site_profiles — never invent it",
             "title": "Site Id",
             "type": "string"
           },
@@ -4870,17 +4752,12 @@
             "description": "One candidate content opportunity, sourced from GSC / SEO Audit / manual /\nstrategic gap analysis (this app's own topic-generation engine).",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -5024,10 +4901,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "Opportunity",
             "type": "object",
             "x-sdl": "entity"
@@ -5069,6 +4942,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -5097,13 +4980,13 @@
       "params_schema": {
         "properties": {
           "opportunity_id": {
-            "description": "UUID of the opportunity to turn into a brief \u2014 from list_opportunities, never invented",
+            "description": "UUID of the opportunity to turn into a brief — from list_opportunities, never invented",
             "title": "Opportunity Id",
             "type": "string"
           },
           "target_language": {
             "default": "",
-            "description": "Language code for this brief (e.g. 'ru', 'ro'). Empty = use the site profile's first target language. Pass explicitly to create one brief per language for the same opportunity \u2014 a multilingual site is expected to get a separate brief per language, not one brief reused across languages.",
+            "description": "Language code for this brief (e.g. 'ru', 'ro'). Empty = use the site profile's first target language. Pass explicitly to create one brief per language for the same opportunity — a multilingual site is expected to get a separate brief per language, not one brief reused across languages.",
             "title": "Target Language",
             "type": "string"
           },
@@ -5175,17 +5058,12 @@
             "x-sdl-role": "content.raw_body"
           },
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -5415,10 +5293,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ArticleBrief",
         "type": "object",
         "x-sdl": "entity"
@@ -5496,17 +5370,12 @@
             "description": "One scheduled slot on the monthly publication grid.",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -5599,10 +5468,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "ContentCalendarEntry",
             "type": "object",
             "x-sdl": "entity"
@@ -5644,6 +5509,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -5698,17 +5573,12 @@
             "description": "One scheduled slot on the monthly publication grid.",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -5801,10 +5671,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "ContentCalendarEntry",
             "type": "object",
             "x-sdl": "entity"
@@ -5846,6 +5712,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -5873,7 +5749,7 @@
       "params_schema": {
         "properties": {
           "queue_item_id": {
-            "description": "UUID of the queue item to link \u2014 from list_queue, never invented",
+            "description": "UUID of the queue item to link — from list_queue, never invented",
             "title": "Queue Item Id",
             "type": "string"
           },
@@ -5897,20 +5773,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Editorial workflow state \u2014 one row per opportunity/brief in flight.",
+        "description": "Editorial workflow state — one row per opportunity/brief in flight.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -6048,10 +5919,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "QueueItem",
         "type": "object",
         "x-sdl": "entity"
@@ -6074,7 +5941,7 @@
       "params_schema": {
         "properties": {
           "brief_id": {
-            "description": "UUID of an existing article brief \u2014 from list_briefs, never invented",
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
             "title": "Brief Id",
             "type": "string"
           }
@@ -6134,17 +6001,12 @@
             "x-sdl-role": "content.raw_body"
           },
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -6374,10 +6236,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ArticleBrief",
         "type": "object",
         "x-sdl": "entity"
@@ -6390,7 +6248,7 @@
     },
     {
       "name": "update_brief_title",
-      "description": "Fix an existing brief's working_title in place \u2014 for the known bug where a brief created for a SECOND language of the same opportunity kept the FIRST language's title (e.g. a Romanian brief still titled in Russian) because the opportunity's own stored query text was reused as-is. Pass the real, correctly-translated title for this brief's own target_language \u2014 never invent a translation.",
+      "description": "Fix an existing brief's working_title in place — for the known bug where a brief created for a SECOND language of the same opportunity kept the FIRST language's title (e.g. a Romanian brief still titled in Russian) because the opportunity's own stored query text was reused as-is. Pass the real, correctly-translated title for this brief's own target_language — never invent a translation.",
       "action_type": "write",
       "chain_callable": true,
       "effects": [
@@ -6400,12 +6258,12 @@
       "params_schema": {
         "properties": {
           "brief_id": {
-            "description": "UUID of an existing article brief \u2014 from list_briefs, never invented",
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
             "title": "Brief Id",
             "type": "string"
           },
           "working_title": {
-            "description": "The corrected title, written in the brief's OWN target_language \u2014 never invent a translation, pass real text (e.g. from that language's own Search Console data or a human-provided translation)",
+            "description": "The corrected title, written in the brief's OWN target_language — never invent a translation, pass real text (e.g. from that language's own Search Console data or a human-provided translation)",
             "minLength": 1,
             "title": "Working Title",
             "type": "string"
@@ -6467,17 +6325,12 @@
             "x-sdl-role": "content.raw_body"
           },
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -6707,10 +6560,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "ArticleBrief",
         "type": "object",
         "x-sdl": "entity"
@@ -6731,7 +6580,7 @@
       "params_schema": {
         "properties": {
           "brief_id": {
-            "description": "UUID of an existing article brief \u2014 from list_briefs, never invented",
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
             "title": "Brief Id",
             "type": "string"
           }
@@ -6746,17 +6595,12 @@
         "description": "Read-only payload for Media Studio's create_media_brief; never generates assets.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -6914,10 +6758,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "MediaBriefHandoff",
         "type": "object",
         "x-sdl": "entity"
@@ -6930,7 +6770,7 @@
     },
     {
       "name": "build_writer_brief",
-      "description": "Assemble an existing article brief into the exact shape Article Writer (imperal-article-writer-extension) needs for create_project/create_article/generate_article \u2014 title, keyword, outline, audience, CTA. Pass the returned fields straight into that app's tools; there is no direct extension-to-extension call, so Webbee relays this data in the same chat turn.",
+      "description": "Assemble an existing article brief into the exact shape Article Writer (imperal-article-writer-extension) needs for create_project/create_article/generate_article — title, keyword, outline, audience, CTA. Pass the returned fields straight into that app's tools; there is no direct extension-to-extension call, so Webbee relays this data in the same chat turn.",
       "action_type": "read",
       "chain_callable": true,
       "effects": [],
@@ -6938,7 +6778,7 @@
       "params_schema": {
         "properties": {
           "brief_id": {
-            "description": "UUID of an existing article brief \u2014 from list_briefs, never invented",
+            "description": "UUID of an existing article brief — from list_briefs, never invented",
             "title": "Brief Id",
             "type": "string"
           }
@@ -6950,7 +6790,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Everything Article Writer needs to create_project/create_article/generate_article\nfor this brief, assembled in the exact shape that app's tools expect. There is no\ndirect extension-to-extension call here (no cross-extension IPC exists on this\nplatform) \u2014 Webbee reads this entity's fields and passes them into Article Writer's\nown tools in the next chat turn. The `body` (from sdl.Bodied) is the full brief as\nMarkdown, ready to paste as Article Writer's brief/keyword input.",
+        "description": "Everything Article Writer needs to create_project/create_article/generate_article\nfor this brief, assembled in the exact shape that app's tools expect. There is no\ndirect extension-to-extension call here (no cross-extension IPC exists on this\nplatform) — Webbee reads this entity's fields and passes them into Article Writer's\nown tools in the next chat turn. The `body` (from sdl.Bodied) is the full brief as\nMarkdown, ready to paste as Article Writer's brief/keyword input.",
         "properties": {
           "body": {
             "anyOf": [
@@ -6998,17 +6838,12 @@
             "x-sdl-role": "content.raw_body"
           },
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -7207,10 +7042,6 @@
             "type": "object"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "WriterBrief",
         "type": "object",
         "x-sdl": "entity"
@@ -7297,17 +7128,12 @@
                 "x-sdl-role": "content.raw_body"
               },
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -7537,10 +7363,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "ArticleBrief",
             "type": "object",
             "x-sdl": "entity"
@@ -7582,6 +7404,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -7599,7 +7431,7 @@
     },
     {
       "name": "list_queue",
-      "description": "List the editorial queue \u2014 opportunities and briefs tracked through their lifecycle from idea to published. Optionally filter by site and/or lifecycle status.",
+      "description": "List the editorial queue — opportunities and briefs tracked through their lifecycle from idea to published. Optionally filter by site and/or lifecycle status.",
       "action_type": "read",
       "chain_callable": true,
       "effects": [],
@@ -7631,20 +7463,15 @@
       "return_schema": {
         "$defs": {
           "QueueItem": {
-            "description": "Editorial workflow state \u2014 one row per opportunity/brief in flight.",
+            "description": "Editorial workflow state — one row per opportunity/brief in flight.",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -7782,10 +7609,6 @@
                 "type": "string"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "QueueItem",
             "type": "object",
             "x-sdl": "entity"
@@ -7827,6 +7650,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -7854,7 +7687,7 @@
       "params_schema": {
         "properties": {
           "queue_item_id": {
-            "description": "UUID of the queue item to update \u2014 from list_queue, never invented",
+            "description": "UUID of the queue item to update — from list_queue, never invented",
             "title": "Queue Item Id",
             "type": "string"
           },
@@ -7878,20 +7711,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Editorial workflow state \u2014 one row per opportunity/brief in flight.",
+        "description": "Editorial workflow state — one row per opportunity/brief in flight.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -8029,10 +7857,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "QueueItem",
         "type": "object",
         "x-sdl": "entity"
@@ -8055,7 +7879,7 @@
       "params_schema": {
         "properties": {
           "queue_item_id": {
-            "description": "UUID of the queue item to sign off on \u2014 from list_queue, never invented",
+            "description": "UUID of the queue item to sign off on — from list_queue, never invented",
             "title": "Queue Item Id",
             "type": "string"
           },
@@ -8079,20 +7903,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Editorial workflow state \u2014 one row per opportunity/brief in flight.",
+        "description": "Editorial workflow state — one row per opportunity/brief in flight.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -8230,10 +8049,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "QueueItem",
         "type": "object",
         "x-sdl": "entity"
@@ -8246,7 +8061,7 @@
     },
     {
       "name": "purge_pipeline_data",
-      "description": "Wipe ALL working pipeline data for every site -- opportunities, article briefs, editorial queue items, tracked site competitors, content audits, and cannibalization findings. Site profiles themselves (the connected sites) are NEVER touched -- only the downstream content-strategy work built on top of them. Irreversible. Requires confirm_wipe=true.",
+      "description": "Wipe ALL working pipeline data for every site -- opportunities, article briefs, editorial queue items, tracked site competitors, content audits, and cannibalization findings. Site profiles themselves (the connected sites) are NEVER touched -- only the downstream content-strategy work built on top of them. Irreversible.",
       "action_type": "destructive",
       "chain_callable": true,
       "effects": [
@@ -8259,25 +8074,21 @@
       ],
       "id_projection": "",
       "params_schema": {
+        "description": "No fields: gated purely by action_type=\"destructive\" (platform's own\nKAV confirmation card). A manual confirm_wipe field here would\ndouble-prompt and break the platform's \"what you saw is what runs\"\nguarantee -- see POST_AUDIT_LOG_STANDARD.md at the Apps root.",
         "properties": {},
         "title": "PurgePipelineDataParams",
         "type": "object"
       },
       "return_schema": {
-        "description": "Outcome of a full pipeline data wipe \u2014 counts removed per collection,\nand which site profiles were kept untouched.",
+        "description": "Outcome of a full pipeline data wipe — counts removed per collection,\nand which site profiles were kept untouched.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -8392,10 +8203,6 @@
             "type": "array"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "PurgeResult",
         "type": "object",
         "x-sdl": "entity"
@@ -8408,7 +8215,7 @@
     },
     {
       "name": "purge_site_pipeline_data",
-      "description": "Wipe ALL working pipeline data for ONE site -- its opportunities, article briefs, editorial queue items, tracked competitors, content audits, and cannibalization findings. Every OTHER site's data is untouched. The site profile itself is NEVER removed. Irreversible. Requires confirm_wipe=true.",
+      "description": "Wipe ALL working pipeline data for ONE site -- its opportunities, article briefs, editorial queue items, tracked competitors, content audits, and cannibalization findings. Every OTHER site's data is untouched. The site profile itself is NEVER removed. Irreversible.",
       "action_type": "destructive",
       "chain_callable": true,
       "effects": [
@@ -8423,7 +8230,7 @@
       "params_schema": {
         "properties": {
           "site_id": {
-            "description": "Site id from list_site_profiles \u2014 never invent it. Only THIS site's pipeline data is removed; every other site's opportunities/briefs/queue/etc. are untouched.",
+            "description": "Site id from list_site_profiles — never invent it. Only THIS site's pipeline data is removed; every other site's opportunities/briefs/queue/etc. are untouched.",
             "title": "Site Id",
             "type": "string"
           }
@@ -8435,20 +8242,15 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Outcome of a full pipeline data wipe \u2014 counts removed per collection,\nand which site profiles were kept untouched.",
+        "description": "Outcome of a full pipeline data wipe — counts removed per collection,\nand which site profiles were kept untouched.",
         "properties": {
           "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "title": "Id"
+            "default": "",
+            "title": "Id",
+            "type": "string"
           },
           "title": {
+            "default": "",
             "title": "Title",
             "type": "string"
           },
@@ -8563,15 +8365,269 @@
             "type": "array"
           }
         },
-        "required": [
-          "id",
-          "title"
-        ],
         "title": "PurgeResult",
         "type": "object",
         "x-sdl": "entity"
       },
       "event": "site_pipeline_purged",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "export_project",
+      "description": "Export complete project data as a JSON string, including the site profile, opportunities, article briefs, queue items, authors, competitors, audits, cannibalization findings, existing content, decay reports, KPI history, outreach targets, and internal linking status. Nothing is omitted.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id of the project to export (from list_site_profiles)",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "ExportProjectParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "project_json": {
+            "default": "",
+            "title": "Project Json",
+            "type": "string"
+          },
+          "exported_at": {
+            "default": "",
+            "title": "Exported At",
+            "type": "string"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          }
+        },
+        "title": "ExportProjectResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "import_project",
+      "description": "Import a project from a JSON string exported by Content Strategy Hub. Recreates every record point-by-point, correctly preserving relational links between opportunities, briefs, authors, and editorial queue items.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "create:site_profile",
+        "import:project"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "project_json": {
+            "description": "Complete project JSON exported from Content Strategy Hub",
+            "title": "Project Json",
+            "type": "string"
+          },
+          "target_site_id": {
+            "default": "",
+            "description": "Optional custom site_id override; if empty, uses the original site_id from the JSON",
+            "title": "Target Site Id",
+            "type": "string"
+          },
+          "overwrite": {
+            "default": false,
+            "description": "If true, overwrite any existing project with this site_id",
+            "title": "Overwrite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "project_json"
+        ],
+        "title": "ImportProjectParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "created": {
+            "default": false,
+            "title": "Created",
+            "type": "boolean"
+          },
+          "updated": {
+            "default": false,
+            "title": "Updated",
+            "type": "boolean"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "title": "ImportProjectResult",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "created",
       "background": false,
       "long_running": false,
       "scopes": [],
@@ -8599,20 +8655,15 @@
       "return_schema": {
         "$defs": {
           "ConnectedSite": {
-            "description": "One site read from a site-provider extension (WordPress Hub today,\nmore providers later) \u2014 the raw material behind the Quick Add list.",
+            "description": "One site read from a site-provider extension (WordPress Hub today,\nmore providers later) — the raw material behind the Quick Add list.",
             "properties": {
               "id": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  }
-                ],
-                "title": "Id"
+                "default": "",
+                "title": "Id",
+                "type": "string"
               },
               "title": {
+                "default": "",
                 "title": "Title",
                 "type": "string"
               },
@@ -8671,10 +8722,6 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "id",
-              "title"
-            ],
             "title": "ConnectedSite",
             "type": "object",
             "x-sdl": "entity"
@@ -8716,6 +8763,16 @@
             "default": false,
             "title": "Has More",
             "type": "boolean"
+          },
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
           }
         },
         "required": [
@@ -8730,6 +8787,216 @@
       "long_running": false,
       "scopes": [],
       "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "get_internal_linking_status",
+      "description": "Refresh and read one project's Internal Linking Engine status (enabled, mode, index health, latest plan) via inter-app IPC, and cache it so the project's 'Internal Linking' tab can show it reliably. Call this after enabling/changing settings there, or if the tab looks stale.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id/domain (site_profiles.site_id) to check Internal Linking Engine status for",
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "GetInternalLinkingStatusParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Internal Linking Engine status for one project, as read via inter-app IPC.",
+        "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "additionalProperties": true,
+            "title": "Status",
+            "type": "object"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "title": "ILEStatusRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
+    },
+    {
+      "name": "enable_internal_linking",
+      "description": "Turn on Internal Linking Engine for this project via inter-app IPC, then refresh the 'Internal Linking' tab's status cache. No content is touched until a plan is previewed and explicitly applied inside that app.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "csa.internal_linking_enabled"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "site_id": {
+            "description": "Site id/domain (site_profiles.site_id) to turn Internal Linking Engine on for",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "domain": {
+            "default": "",
+            "description": "Display name; defaults to site_id if left blank",
+            "title": "Domain",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id"
+        ],
+        "title": "EnableInternalLinkingParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Internal Linking Engine status for one project, as read via inter-app IPC.",
+        "properties": {
+          "id": {
+            "default": "",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "additionalProperties": true,
+            "title": "Status",
+            "type": "object"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "site_id": {
+            "default": "",
+            "title": "Site Id",
+            "type": "string"
+          },
+          "error": {
+            "default": "",
+            "title": "Error",
+            "type": "string"
+          }
+        },
+        "title": "ILEStatusRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "content-strategy-app.enable_internal_linking",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "content-strategy-app"
     }
   ],
   "signals": [],
@@ -8737,10 +9004,14 @@
     {
       "name": "csa_connected_sites_refresh",
       "cron": "10 * * * *"
+    },
+    {
+      "name": "csa_ile_status_refresh",
+      "cron": "20 * * * *"
     }
   ],
   "required_scopes": [],
-  "icon_size_bytes": 2815,
+  "icon_size_bytes": 2810,
   "exposed": [
     {
       "name": "register_project",
@@ -8758,7 +9029,7 @@
       "slot": "left",
       "title": "Editorial Queue",
       "tree": {},
-      "icon": "\ud83d\udccb",
+      "icon": "📋",
       "refresh": "manual",
       "center_overlay": false,
       "default_width": 300,
@@ -8770,7 +9041,7 @@
       "slot": "center",
       "title": "Opportunity / Brief",
       "tree": {},
-      "icon": "\ud83d\udcdd",
+      "icon": "📝",
       "refresh": "manual",
       "center_overlay": true
     },
@@ -8779,7 +9050,7 @@
       "slot": "right",
       "title": "Sites",
       "tree": {},
-      "icon": "\ud83c\udf10",
+      "icon": "🌐",
       "refresh": "manual",
       "center_overlay": false,
       "default_width": 280,

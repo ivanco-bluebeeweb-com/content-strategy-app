@@ -2800,3 +2800,25 @@ async def test_export_and_import_project_full_roundtrip():
     kpis = await target_ctx.store.query("kpi_snapshots", where={"site_id": target_site_id})
     assert len(kpis.data) == 1
     assert kpis.data[0].data["snapshot_date"] == "2026-10-01"
+
+
+@pytest.mark.asyncio
+async def test_brief_panel_export_and_import_dialogs_render():
+    ctx = MockContext()
+    await m.create_site_profile(ctx, CreateSiteProfileParams(site_id="dialog-test.md", domain="dialog-test.md"))
+
+    # Check default render - no dialog
+    default_rendered = repr(await m.brief_panel(ctx, site_id="dialog-test.md"))
+    assert "Export Project" not in default_rendered
+
+    # Check export dialog renders
+    export_rendered = repr(await m.brief_panel(ctx, site_id="dialog-test.md", show_export="1"))
+    assert "Export Project · dialog-test.md" in export_rendered
+    assert "dialog-test.md-export.json" in export_rendered
+    assert "Download" in export_rendered
+
+    # Check import dialog renders
+    import_rendered = repr(await m.brief_panel(ctx, site_id="dialog-test.md", show_import="1"))
+    assert "Import Project · dialog-test.md" in import_rendered
+    assert "import_project" in import_rendered
+

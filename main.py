@@ -3902,7 +3902,7 @@ async def _project_tabs_view(
                 confirm_label="Done",
                 cancel_label="Close",
                 on_confirm=ui.Call("__panel__brief", site_id=site_id, show_export="", show_import=""),
-                on_cancel=ui.Call("__panel__brief", site_id=site_id, show_export="", show_import=""),
+                on_close=ui.Call("__panel__brief", site_id=site_id, show_export="", show_import=""),
             )
         )
 
@@ -3932,7 +3932,7 @@ async def _project_tabs_view(
                 confirm_label="Import Project",
                 cancel_label="Cancel",
                 on_confirm=ui.Call("import_project", target_site_id=site_id, overwrite=True),
-                on_cancel=ui.Call("__panel__brief", site_id=site_id, show_import="", show_export=""),
+                on_close=ui.Call("__panel__brief", site_id=site_id, show_import="", show_export=""),
             )
         )
 
